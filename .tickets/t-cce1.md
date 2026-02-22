@@ -1,6 +1,6 @@
 ---
 id: t-cce1
-status: open
+status: closed
 deps: [t-ad86]
 links: []
 created: 2026-02-22T00:59:22Z
@@ -39,3 +39,9 @@ Approach:
 
 tk serve responds to MCP initialize and tools/list. All tools return correct JSON. Claude Code can connect and use tools.
 
+
+## Notes
+
+**2026-02-22T19:47:46Z**
+
+MCP server implemented with 10 tools: ticket_list, ticket_show, ticket_create, ticket_edit, ticket_add_note, ticket_dep, ticket_link, ticket_ready, ticket_blocked, ticket_workflow. Uses official modelcontextprotocol/go-sdk. All tools tested via stdio JSON-RPC.
