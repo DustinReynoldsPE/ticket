@@ -14,16 +14,34 @@ VS Code allows you to Ctrl+Click or Cmd+Click the ID and jump directly to the fi
 
 ## Install
 
+There are two implementations: a Go binary and the original bash script. Both are fully compatible — they read and write the same ticket format.
+
+### Go (recommended)
+
+Requires Go 1.21+.
+
+```bash
+git clone https://github.com/EnderRealm/ticket.git
+cd ticket && go build -o ~/.local/bin/tk .
+```
+
+The Go version includes everything in the bash version plus:
+- `tk ui` — interactive TUI (list/detail views, inline editing)
+- `tk serve` — MCP server for Claude Code integration
+- `--json` flag on all commands
+
+### Bash
+
+No dependencies beyond coreutils. Works on any POSIX system with bash.
+
 ```bash
 git clone https://github.com/EnderRealm/ticket.git
 cd ticket && ln -s "$PWD/ticket" ~/.local/bin/tk
 ```
 
-Or just copy `ticket` to somewhere in your PATH.
+Or just copy the `ticket` script to somewhere in your PATH.
 
-## Requirements
-
-`tk` is a portable bash script requiring only coreutils, so it works out of the box on any POSIX system with bash installed. The `query` command requires `jq`. Uses `rg` (ripgrep) if available, falls back to `grep`.
+The `query` command requires `jq`. Uses `rg` (ripgrep) if available, falls back to `grep`.
 
 ## Configuration
 
