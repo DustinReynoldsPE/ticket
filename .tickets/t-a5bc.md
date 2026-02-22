@@ -1,6 +1,6 @@
 ---
 id: t-a5bc
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-02-22T00:57:32Z

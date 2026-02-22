@@ -1,6 +1,6 @@
 ---
 id: t-dde3
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-22T00:57:39Z
@@ -31,3 +31,9 @@ Approach:
 
 Types compile, validation rejects invalid status/type/priority
 
+
+## Notes
+
+**2026-02-22T01:53:27Z**
+
+Implemented: Ticket struct with yaml tags, Status/TicketType enums, Note type, ValidateStatus/ValidateType/ValidatePriority functions, Ticket.Validate(). Tests cover all validation paths.
