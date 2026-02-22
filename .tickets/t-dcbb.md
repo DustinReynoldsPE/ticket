@@ -1,6 +1,6 @@
 ---
 id: t-dcbb
-status: open
+status: closed
 deps: [t-dde3]
 links: []
 created: 2026-02-22T00:58:07Z
@@ -28,3 +28,9 @@ Approach:
 
 Filters correctly narrow ticket lists. Sort order matches current bash output.
 
+
+## Notes
+
+**2026-02-22T06:21:14Z**
+
+Implemented Filter(), SortByStatusPriorityID(), SortByPriorityID(), TypeOrder(). ListOptions supports Status, Type, Priority, Assignee, Tag, Parent filters. Sort order matches bash: in_progress > open > needs_testing > closed, then priority asc, then ID.
