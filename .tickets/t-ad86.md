@@ -1,6 +1,6 @@
 ---
 id: t-ad86
-status: open
+status: closed
 deps: [t-4b4b, t-65bd, t-9105, t-d608, t-e208]
 links: []
 created: 2026-02-22T00:58:51Z
@@ -27,3 +27,9 @@ Approach:
 
 test-suite.sh runs with 0 failures against the Go binary
 
+
+## Notes
+
+**2026-02-22T08:09:04Z**
+
+All 103 test-suite.sh assertions pass against Go binary (0 failures). Fixed: edit --description/-d/--design/--acceptance body section editing, help output includes flag listing.

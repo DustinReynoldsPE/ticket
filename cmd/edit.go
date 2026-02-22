@@ -96,6 +96,19 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		changed = true
 	}
 
+	if v, _ := cmd.Flags().GetString("description"); cmd.Flags().Changed("description") {
+		t.Body = updateSection(t.Body, "", v)
+		changed = true
+	}
+	if v, _ := cmd.Flags().GetString("design"); cmd.Flags().Changed("design") {
+		t.Body = updateSection(t.Body, "Design", v)
+		changed = true
+	}
+	if v, _ := cmd.Flags().GetString("acceptance"); cmd.Flags().Changed("acceptance") {
+		t.Body = updateSection(t.Body, "Acceptance Criteria", v)
+		changed = true
+	}
+
 	if !changed {
 		return fmt.Errorf("no options provided")
 	}
@@ -120,6 +133,39 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// updateSection replaces or inserts a markdown section in the body.
+// If heading is empty, replaces the description (text before first ## heading).
+func updateSection(body, heading, content string) string {
+	if heading == "" {
+		// Replace description: everything before first ## heading.
+		idx := strings.Index(body, "\n## ")
+		if idx >= 0 {
+			return "\n" + content + "\n" + body[idx:]
+		}
+		return "\n" + content + "\n"
+	}
+
+	marker := "## " + heading
+	idx := strings.Index(body, marker)
+	if idx >= 0 {
+		// Find end of this section (next ## or end of body).
+		rest := body[idx+len(marker):]
+		nextSection := strings.Index(rest, "\n## ")
+		var after string
+		if nextSection >= 0 {
+			after = rest[nextSection:]
+		}
+		return body[:idx] + marker + "\n\n" + content + "\n" + after
+	}
+
+	// Section doesn't exist — append it before Notes if present, else at end.
+	notesIdx := strings.Index(body, "\n## Notes")
+	if notesIdx >= 0 {
+		return body[:notesIdx] + "\n" + marker + "\n\n" + content + "\n" + body[notesIdx:]
+	}
+	return body + "\n" + marker + "\n\n" + content + "\n"
 }
 
 func propagationReason(s ticket.Status) string {
