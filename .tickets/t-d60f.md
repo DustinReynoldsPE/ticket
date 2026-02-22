@@ -1,6 +1,6 @@
 ---
 id: t-d60f
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-22T00:57:43Z
@@ -29,3 +29,9 @@ Approach:
 
 Generated IDs match the pattern [a-z]+-[0-9a-f]{4}
 
+
+## Notes
+
+**2026-02-22T02:01:25Z**
+
+Implemented: GenerateID/GenerateIDFrom, extractPrefix, idHash. Matches bash behavior: prefix from dir name segments, 4-char hex hash from sha256(pid+timestamp). Tests cover hyphenated, underscored, no-delimiter, and short dir names.
