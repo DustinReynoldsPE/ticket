@@ -1,13 +1,13 @@
 # Maintainer: EnderRealm <EnderRealm@users.noreply.github.com>
 pkgname=ticket
-pkgver=0.1.0
+pkgver=PKGVER_PLACEHOLDER
 pkgrel=1
 pkgdesc="Markdown-based ticket management CLI"
 arch=('x86_64')
 url="https://github.com/EnderRealm/ticket"
 license=('MIT')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/EnderRealm/ticket/releases/download/v$pkgver/ticket_${pkgver}_linux_amd64.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('SHA_PLACEHOLDER')
 
 package() {
     install -Dm755 tk "$pkgdir/usr/bin/tk"

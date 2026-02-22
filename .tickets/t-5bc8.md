@@ -1,6 +1,6 @@
 ---
 id: t-5bc8
-status: open
+status: closed
 deps: [t-ad86]
 links: []
 created: 2026-02-22T00:58:57Z
@@ -28,3 +28,9 @@ Approach:
 
 goreleaser release --snapshot builds all 4 platform binaries. Release workflow produces GitHub release with binaries.
 
+
+## Notes
+
+**2026-02-22T08:30:40Z**
+
+GoReleaser v2 config validated and snapshot-tested. All 4 platform binaries (darwin/linux × amd64/arm64) build successfully. Release workflow updated to use GoReleaser action. AUR PKGBUILD template updated for Go binary distribution.

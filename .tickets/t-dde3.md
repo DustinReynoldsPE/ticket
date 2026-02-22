@@ -12,6 +12,8 @@ tags: [phase-1]
 ---
 # Core types and validation
 
+
+
 Define Ticket struct, Status/TicketType enums, Note type, and validation functions.
 
 ## Design
@@ -30,7 +32,6 @@ Approach:
 ## Acceptance Criteria
 
 Types compile, validation rejects invalid status/type/priority
-
 
 ## Notes
 
