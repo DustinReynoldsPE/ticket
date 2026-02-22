@@ -1,0 +1,318 @@
+package ticket
+
+import (
+	"testing"
+	"time"
+)
+
+func depStore(t *testing.T, tickets ...*Ticket) *FileStore {
+	t.Helper()
+	store := NewFileStore(t.TempDir())
+	for _, tk := range tickets {
+		if err := store.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+	return store
+}
+
+func mk(id string, status Status, deps ...string) *Ticket {
+	if deps == nil {
+		deps = []string{}
+	}
+	return &Ticket{
+		ID:       id,
+		Status:   status,
+		Type:     TypeTask,
+		Priority: 2,
+		Deps:     deps,
+		Links:    []string{},
+		Created:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Title:    "Ticket " + id,
+		Body:     "\n",
+	}
+}
+
+func mkWithParent(id string, status Status, parent string, deps ...string) *Ticket {
+	t := mk(id, status, deps...)
+	t.Parent = parent
+	return t
+}
+
+func TestIsBlocked_NoDeps(t *testing.T) {
+	s := depStore(t, mk("t-1", StatusOpen))
+	tk, _ := s.Get("t-1")
+	if IsBlocked(s, tk) {
+		t.Error("ticket with no deps should not be blocked")
+	}
+}
+
+func TestIsBlocked_AllClosed(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-dep"),
+		mk("t-dep", StatusClosed),
+	)
+	tk, _ := s.Get("t-1")
+	if IsBlocked(s, tk) {
+		t.Error("ticket with all deps closed should not be blocked")
+	}
+}
+
+func TestIsBlocked_OpenDep(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-dep"),
+		mk("t-dep", StatusOpen),
+	)
+	tk, _ := s.Get("t-1")
+	if !IsBlocked(s, tk) {
+		t.Error("ticket with open dep should be blocked")
+	}
+}
+
+func TestIsBlocked_MissingDep(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-gone"),
+	)
+	tk, _ := s.Get("t-1")
+	if !IsBlocked(s, tk) {
+		t.Error("ticket with missing dep should be blocked")
+	}
+}
+
+func TestBlockingDeps(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-a", "t-b", "t-c"),
+		mk("t-a", StatusClosed),
+		mk("t-b", StatusOpen),
+		mk("t-c", StatusInProgress),
+	)
+	tk, _ := s.Get("t-1")
+	blocking := BlockingDeps(s, tk)
+	if len(blocking) != 2 {
+		t.Errorf("len(blocking) = %d, want 2", len(blocking))
+	}
+}
+
+func TestIsReady_Simple(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-dep"),
+		mk("t-dep", StatusClosed),
+	)
+	tk, _ := s.Get("t-1")
+	if !IsReady(s, tk) {
+		t.Error("ticket with all deps closed should be ready")
+	}
+}
+
+func TestIsReady_ParentGating(t *testing.T) {
+	// Parent epic is open (not in_progress) → child not ready.
+	epic := mk("t-epic", StatusOpen)
+	epic.Type = TypeEpic
+	child := mkWithParent("t-child", StatusOpen, "t-epic")
+
+	s := depStore(t, epic, child)
+	tk, _ := s.Get("t-child")
+	if IsReady(s, tk) {
+		t.Error("child of open epic should not be ready")
+	}
+}
+
+func TestIsReady_ParentInProgress(t *testing.T) {
+	epic := mk("t-epic", StatusInProgress)
+	epic.Type = TypeEpic
+	child := mkWithParent("t-child", StatusOpen, "t-epic")
+
+	s := depStore(t, epic, child)
+	tk, _ := s.Get("t-child")
+	if !IsReady(s, tk) {
+		t.Error("child of in_progress epic should be ready")
+	}
+}
+
+func TestIsReadyOpen_BypassesParentGate(t *testing.T) {
+	epic := mk("t-epic", StatusOpen)
+	epic.Type = TypeEpic
+	child := mkWithParent("t-child", StatusOpen, "t-epic")
+
+	s := depStore(t, epic, child)
+	tk, _ := s.Get("t-child")
+	if !IsReadyOpen(s, tk) {
+		t.Error("IsReadyOpen should bypass parent gating")
+	}
+}
+
+func TestIsReady_ClosedNotReady(t *testing.T) {
+	s := depStore(t, mk("t-1", StatusClosed))
+	tk, _ := s.Get("t-1")
+	if IsReady(s, tk) {
+		t.Error("closed ticket should not be ready")
+	}
+}
+
+func TestReadyTickets(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen),
+		mk("t-2", StatusOpen, "t-3"),
+		mk("t-3", StatusOpen),
+	)
+	ready, err := ReadyTickets(s)
+	if err != nil {
+		t.Fatalf("ReadyTickets: %v", err)
+	}
+	// t-1 and t-3 are ready; t-2 is blocked by t-3.
+	if len(ready) != 2 {
+		t.Errorf("len(ready) = %d, want 2", len(ready))
+	}
+}
+
+func TestBlockedTickets(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen),
+		mk("t-2", StatusOpen, "t-3"),
+		mk("t-3", StatusOpen),
+	)
+	blocked, err := BlockedTickets(s)
+	if err != nil {
+		t.Fatalf("BlockedTickets: %v", err)
+	}
+	if len(blocked) != 1 || blocked[0].ID != "t-2" {
+		t.Errorf("blocked = %v, want [t-2]", ids2(blocked))
+	}
+}
+
+func TestFindCycles_NoCycles(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-2"),
+		mk("t-2", StatusOpen, "t-3"),
+		mk("t-3", StatusOpen),
+	)
+	cycles, err := FindCycles(s)
+	if err != nil {
+		t.Fatalf("FindCycles: %v", err)
+	}
+	if len(cycles) != 0 {
+		t.Errorf("expected no cycles, got %d", len(cycles))
+	}
+}
+
+func TestFindCycles_SimpleCycle(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-2"),
+		mk("t-2", StatusOpen, "t-1"),
+	)
+	cycles, err := FindCycles(s)
+	if err != nil {
+		t.Fatalf("FindCycles: %v", err)
+	}
+	if len(cycles) != 1 {
+		t.Fatalf("expected 1 cycle, got %d", len(cycles))
+	}
+	if len(cycles[0].IDs) != 2 {
+		t.Errorf("cycle length = %d, want 2", len(cycles[0].IDs))
+	}
+}
+
+func TestFindCycles_IgnoresClosed(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusClosed, "t-2"),
+		mk("t-2", StatusClosed, "t-1"),
+	)
+	cycles, err := FindCycles(s)
+	if err != nil {
+		t.Fatalf("FindCycles: %v", err)
+	}
+	if len(cycles) != 0 {
+		t.Error("closed tickets should not generate cycles")
+	}
+}
+
+func TestDepTree(t *testing.T) {
+	s := depStore(t,
+		mk("t-1", StatusOpen, "t-2", "t-3"),
+		mk("t-2", StatusOpen, "t-3"),
+		mk("t-3", StatusClosed),
+	)
+	nodes, err := DepTree(s, "t-1", false)
+	if err != nil {
+		t.Fatalf("DepTree: %v", err)
+	}
+	// t-1 -> t-2 -> t-3 (deduped: t-3 appears once via t-2, skipped under t-1)
+	// Actually: t-1 at depth 0, t-2 at depth 1, t-3 at depth 2, then t-3 skipped for t-1's second dep
+	if len(nodes) != 3 {
+		t.Errorf("deduped tree: len = %d, want 3; nodes: %v", len(nodes), depNodeIDs(nodes))
+	}
+
+	// Full mode shows all.
+	nodesFull, err := DepTree(s, "t-1", true)
+	if err != nil {
+		t.Fatalf("DepTree full: %v", err)
+	}
+	if len(nodesFull) != 4 {
+		t.Errorf("full tree: len = %d, want 4; nodes: %v", len(nodesFull), depNodeIDs(nodesFull))
+	}
+}
+
+func TestAddDep(t *testing.T) {
+	tk := mk("t-1", StatusOpen)
+	if err := AddDep(tk, "t-2"); err != nil {
+		t.Fatalf("AddDep: %v", err)
+	}
+	if len(tk.Deps) != 1 || tk.Deps[0] != "t-2" {
+		t.Errorf("Deps = %v, want [t-2]", tk.Deps)
+	}
+	// Duplicate add is idempotent.
+	if err := AddDep(tk, "t-2"); err != nil {
+		t.Fatalf("AddDep duplicate: %v", err)
+	}
+	if len(tk.Deps) != 1 {
+		t.Errorf("duplicate add: len = %d, want 1", len(tk.Deps))
+	}
+}
+
+func TestAddDep_Self(t *testing.T) {
+	tk := mk("t-1", StatusOpen)
+	if err := AddDep(tk, "t-1"); err == nil {
+		t.Error("self-dep should fail")
+	}
+}
+
+func TestRemoveDep(t *testing.T) {
+	tk := mk("t-1", StatusOpen, "t-2", "t-3")
+	RemoveDep(tk, "t-2")
+	if len(tk.Deps) != 1 || tk.Deps[0] != "t-3" {
+		t.Errorf("Deps = %v, want [t-3]", tk.Deps)
+	}
+}
+
+func TestAddRemoveLink(t *testing.T) {
+	a := mk("t-1", StatusOpen)
+	b := mk("t-2", StatusOpen)
+	AddLink(a, b)
+	if len(a.Links) != 1 || a.Links[0] != "t-2" {
+		t.Errorf("a.Links = %v, want [t-2]", a.Links)
+	}
+	if len(b.Links) != 1 || b.Links[0] != "t-1" {
+		t.Errorf("b.Links = %v, want [t-1]", b.Links)
+	}
+
+	RemoveLink(a, b)
+	if len(a.Links) != 0 || len(b.Links) != 0 {
+		t.Error("links should be empty after remove")
+	}
+}
+
+func ids2(tickets []*Ticket) []string {
+	out := make([]string, len(tickets))
+	for i, t := range tickets {
+		out[i] = t.ID
+	}
+	return out
+}
+
+func depNodeIDs(nodes []DepNode) []string {
+	out := make([]string, len(nodes))
+	for i, n := range nodes {
+		out[i] = n.ID
+	}
+	return out
+}

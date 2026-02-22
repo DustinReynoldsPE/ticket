@@ -1,6 +1,6 @@
 ---
 id: t-afcf
-status: open
+status: closed
 deps: [t-3236]
 links: []
 created: 2026-02-22T00:58:13Z
@@ -29,3 +29,9 @@ Approach:
 
 Dep tree, cycle detection, blocked/ready logic matches bash behavior. Parent gating works for epics.
 
+
+## Notes
+
+**2026-02-22T06:26:05Z**
+
+Implemented DepTree, FindCycles (DFS with coloring), IsBlocked, IsReady (with parent chain gating), IsReadyOpen (bypass gating), BlockingDeps, ReadyTickets, BlockedTickets, AddDep, RemoveDep, AddLink, RemoveLink. 19 tests.
