@@ -1,6 +1,6 @@
 ---
 id: t-65bd
-status: open
+status: closed
 deps: [t-3236, t-dcbb, t-afcf]
 links: []
 created: 2026-02-22T00:58:34Z
@@ -30,3 +30,9 @@ Approach:
 
 Output format matches bash version column-for-column. Filter flags work. Test suite ls/ready/blocked assertions pass.
 
+
+## Notes
+
+**2026-02-22T07:58:17Z**
+
+Implemented ls (with list alias), ready (with --open flag), blocked, closed (with --limit, mtime sort). All share filter flags: -a, -t, -T, -P, --status, --parent. Output format matches bash version.
