@@ -1,6 +1,6 @@
 ---
 id: t-4b4b
-status: open
+status: closed
 deps: [t-3236, t-a5bc]
 links: []
 created: 2026-02-22T00:58:27Z
@@ -31,3 +31,9 @@ Approach:
 
 create/show/edit/delete/status/start/close/reopen work with same flags as bash. --json outputs structured JSON.
 
+
+## Notes
+
+**2026-02-22T07:47:08Z**
+
+Implemented create, show, edit, delete, status, start, close, reopen commands. All flags match bash version. Show displays blockers/blocking/children/linked sections. Edit propagates terminal status changes. Multi-ID show supported.
