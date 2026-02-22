@@ -6,8 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// idCounter provides per-process monotonic noise so that multiple IDs
+// generated within the same nanosecond still differ.
+var idCounter atomic.Uint64
 
 // GenerateID creates a ticket ID from the current directory name and a hash.
 // Format: prefix-hash where prefix is first letter of each hyphen/underscore
@@ -49,10 +54,12 @@ func extractPrefix(name string) string {
 	return strings.ToLower(b.String())
 }
 
-// idHash returns 4 hex chars from sha256 of pid+timestamp, matching the bash
-// implementation's entropy source.
+// idHash returns 4 hex chars from sha256 of pid + nanosecond timestamp +
+// monotonic counter. The counter prevents collisions when multiple IDs are
+// generated within the same nanosecond.
 func idHash(pid int, t time.Time) string {
-	data := fmt.Sprintf("%d%d", pid, t.Unix())
+	seq := idCounter.Add(1)
+	data := fmt.Sprintf("%d%d%d", pid, t.UnixNano(), seq)
 	sum := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%x", sum[:2]) // 2 bytes = 4 hex chars
 }

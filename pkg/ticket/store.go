@@ -23,6 +23,8 @@ func (s *FileStore) EnsureDir() error {
 }
 
 // Create writes a new ticket to disk. The ticket must already have an ID.
+// If the ID collides with an existing ticket, a new ID is generated and
+// the ticket is retried (up to 5 attempts).
 func (s *FileStore) Create(t *Ticket) error {
 	if err := t.Validate(); err != nil {
 		return fmt.Errorf("create: %w", err)
@@ -31,12 +33,16 @@ func (s *FileStore) Create(t *Ticket) error {
 		return err
 	}
 
-	path := s.ticketFile(t.ID)
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("ticket %s already exists", t.ID)
+	const maxRetries = 5
+	for i := 0; i < maxRetries; i++ {
+		path := s.ticketFile(t.ID)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return s.writeTicket(t)
+		}
+		// Collision — regenerate ID and retry.
+		t.ID = GenerateID()
 	}
-
-	return s.writeTicket(t)
+	return fmt.Errorf("ticket ID collision after %d attempts", maxRetries)
 }
 
 // Get retrieves a ticket by exact or partial ID.

@@ -1,6 +1,6 @@
 ---
 id: tic-a639
-status: open
+status: closed
 deps: [tic-9660]
 links: []
 created: 2026-02-22T22:02:38Z
@@ -11,6 +11,9 @@ parent: tic-18e9
 tags: [go-parity]
 ---
 # Add test coverage for untested capabilities
+
+
+
 
 
 
@@ -34,3 +37,9 @@ Each gap needs at least one positive assertion.
 ## Acceptance Criteria
 
 All listed capabilities have at least one test assertion in test-suite.sh. All pass.
+
+## Notes
+
+**2026-02-22T23:18:56Z**
+
+Added 26 new assertions across 8 test sections: partial ID matching, dep tree --full, closed --limit, add-note via stdin, ls --parent, ready/blocked/closed -a/-T filters, show multiple IDs, ls --group-by. Also fixed ID generation collision bug (UnixNano + atomic counter) and added retry-on-collision in FileStore.Create. 129/129 pass.

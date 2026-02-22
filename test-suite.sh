@@ -387,6 +387,150 @@ assert_contains "tk --help" "Usage:" "--help flag works"
 assert_contains "tk -h" "Usage:" "-h flag works"
 
 # ============================================================================
+log_section "PARTIAL ID MATCHING"
+# ============================================================================
+
+# Use first 4 chars of an existing ticket ID
+PARTIAL=${FILTER1:0:4}
+assert_contains "tk show $PARTIAL" "$FILTER1" "Partial ID resolves to full ticket"
+
+# ============================================================================
+log_section "DEP TREE --full"
+# ============================================================================
+
+# DEP1 <- DEP2 <- DEP3 chain still exists from DEPENDENCIES section
+# --full should repeat shared nodes instead of deduplicating
+assert_ok "tk dep tree --full $DEP3" "dep tree --full succeeds"
+assert_contains "tk dep tree $DEP3" "$DEP1" "dep tree shows transitive dep"
+assert_contains "tk dep tree --full $DEP3" "$DEP1" "dep tree --full shows transitive dep"
+
+# ============================================================================
+log_section "CLOSED --limit"
+# ============================================================================
+
+# Create several closed tickets
+CL1=$(tk create "Closed Limit A" | extract_id); track_id "$CL1"
+CL2=$(tk create "Closed Limit B" | extract_id); track_id "$CL2"
+CL3=$(tk create "Closed Limit C" | extract_id); track_id "$CL3"
+tk edit "$CL1" -s closed
+tk edit "$CL2" -s closed
+tk edit "$CL3" -s closed
+
+# --limit=1 should only show 1 ticket
+CL_OUTPUT=$(tk closed --limit=1 2>&1)
+CL_COUNT=$(echo "$CL_OUTPUT" | grep -c "^[a-z]" || true)
+if [[ "$CL_COUNT" -le 2 ]]; then
+    log_pass "closed --limit=1 constrains output"
+else
+    log_fail "closed --limit=1 constrains output (got $CL_COUNT lines)"
+fi
+
+# ============================================================================
+log_section "ADD-NOTE VIA STDIN"
+# ============================================================================
+
+STDIN_ID=$(tk create "Stdin Note Test" | extract_id)
+track_id "$STDIN_ID"
+echo "Note from stdin" | tk add-note "$STDIN_ID"
+assert_contains "tk show $STDIN_ID" "Note from stdin" "add-note reads from stdin"
+
+# ============================================================================
+log_section "LS --parent FILTER"
+# ============================================================================
+
+# EPIC/CHILD1/CHILD2 are closed from propagation tests — use --status=closed
+assert_contains "tk ls --parent=$EPIC --status=closed" "$CHILD1" "ls --parent shows child"
+assert_not_contains "tk ls --parent=$EPIC --status=closed" "$FILTER1" "ls --parent excludes non-children"
+
+# ============================================================================
+log_section "READY/BLOCKED/CLOSED FILTERS"
+# ============================================================================
+
+# Create tickets with distinct assignees and tags for filter testing
+RF1=$(tk create "Ready Filter 1" -a "FilterAlice" --tags "readytest" | extract_id)
+track_id "$RF1"
+RF2=$(tk create "Ready Filter 2" -a "FilterBob" --tags "othertest" | extract_id)
+track_id "$RF2"
+
+# ready -a filter
+RF_READY=$(tk ready -a FilterAlice 2>&1) || true
+if echo "$RF_READY" | grep -q "$RF1"; then
+    log_pass "ready -a filters by assignee (includes match)"
+else
+    # RF1 might not be ready due to parent gating - check with --open
+    RF_READY_OPEN=$(tk ready --open -a FilterAlice 2>&1) || true
+    if echo "$RF_READY_OPEN" | grep -q "$RF1"; then
+        log_pass "ready --open -a filters by assignee (includes match)"
+    else
+        log_fail "ready -a filters by assignee"
+    fi
+fi
+
+# ready -T filter
+RF_TAG=$(tk ready -T readytest 2>&1) || true
+RF_TAG_OPEN=$(tk ready --open -T readytest 2>&1) || true
+if echo "$RF_TAG" | grep -q "$RF1" || echo "$RF_TAG_OPEN" | grep -q "$RF1"; then
+    log_pass "ready -T filters by tag (includes match)"
+else
+    log_fail "ready -T filters by tag"
+fi
+
+# blocked -a filter: make RF1 blocked
+BF_DEP=$(tk create "Blocker for filter" | extract_id)
+track_id "$BF_DEP"
+tk dep "$RF1" "$BF_DEP"
+assert_contains "tk blocked -a FilterAlice" "$RF1" "blocked -a filters by assignee"
+assert_not_contains "tk blocked -a FilterAlice" "$RF2" "blocked -a excludes non-match"
+
+# blocked -T filter
+assert_contains "tk blocked -T readytest" "$RF1" "blocked -T filters by tag"
+assert_not_contains "tk blocked -T readytest" "$RF2" "blocked -T excludes non-match"
+
+# closed -a filter
+tk undep "$RF1" "$BF_DEP"
+tk edit "$RF1" -s closed
+assert_contains "tk closed -a FilterAlice" "$RF1" "closed -a filters by assignee"
+assert_not_contains "tk closed -a FilterAlice" "$RF2" "closed -a excludes non-match"
+
+# closed -T filter
+assert_contains "tk closed -T readytest" "$RF1" "closed -T filters by tag"
+assert_not_contains "tk closed -T readytest" "$RF2" "closed -T excludes non-match"
+
+# ============================================================================
+log_section "SHOW MULTIPLE IDS"
+# ============================================================================
+
+MULTI_OUTPUT=$(tk show "$FILTER1" "$NOTE_ID" 2>&1)
+if echo "$MULTI_OUTPUT" | grep -q "$FILTER1" && echo "$MULTI_OUTPUT" | grep -q "$NOTE_ID"; then
+    log_pass "show accepts multiple IDs"
+else
+    log_fail "show accepts multiple IDs"
+fi
+
+# ============================================================================
+log_section "LS --group-by"
+# ============================================================================
+
+# group-by workflow
+assert_contains "tk ls --group-by=workflow" "===" "group-by workflow shows group headers"
+
+# group-by type
+assert_contains "tk ls --group-by=type" "===" "group-by type shows group headers"
+assert_contains "tk ls --group-by=type" "task" "group-by type includes task group"
+
+# group-by status
+assert_contains "tk ls --group-by=status" "===" "group-by status shows group headers"
+
+# group-by priority
+assert_contains "tk ls --group-by=priority" "===" "group-by priority shows group headers"
+
+# --group shorthand
+assert_contains "tk ls --group" "===" "--group shorthand works"
+
+# invalid group-by
+assert_fail "tk ls --group-by=invalid" "Reject invalid group-by value"
+
+# ============================================================================
 log_section "ERROR HANDLING"
 # ============================================================================
 
