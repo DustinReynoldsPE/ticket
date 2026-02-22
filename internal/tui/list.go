@@ -62,6 +62,10 @@ type listModel struct {
 	statusTab    int
 }
 
+func (m listModel) inputActive() bool {
+	return m.filterActive
+}
+
 func newListModel(tickets []*ticket.Ticket, w, h int) listModel {
 	m := listModel{
 		all:    tickets,
@@ -243,7 +247,7 @@ func (m listModel) view() string {
 	} else if m.filterText != "" {
 		b.WriteString(filterStyle.Render("filter: " + m.filterText + "  (/ to edit, esc clears)"))
 	} else {
-		help := "↑↓/jk navigate  enter open  tab status  / filter  q quit"
+		help := "↑↓/jk navigate  enter open  tab status  / filter  s status  p priority  c create  q quit"
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(help))
 	}
 

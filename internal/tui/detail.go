@@ -15,14 +15,25 @@ var (
 	sectionStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	titleStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7"))
 	detailHelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	inputLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+)
+
+type inputMode int
+
+const (
+	inputNone inputMode = iota
+	inputAssignee
+	inputNote
 )
 
 type detailModel struct {
-	ticket *ticket.Ticket
-	lines  []string
-	offset int
-	width  int
-	height int
+	ticket    *ticket.Ticket
+	lines     []string
+	offset    int
+	width     int
+	height    int
+	input     inputMode
+	inputText string
 }
 
 func newDetailModel(t *ticket.Ticket, w, h int) detailModel {
@@ -40,8 +51,23 @@ func (m *detailModel) setSize(w, h int) {
 	m.height = h
 }
 
+func (m detailModel) inputActive() bool {
+	return m.input != inputNone
+}
+
+func (m *detailModel) startInput(mode inputMode) {
+	m.input = mode
+	m.inputText = ""
+	if mode == inputAssignee {
+		m.inputText = m.ticket.Assignee
+	}
+}
+
 func (m detailModel) visibleRows() int {
 	rows := m.height - 1 // help bar
+	if m.input != inputNone {
+		rows-- // input bar
+	}
 	if rows < 1 {
 		rows = 1
 	}
@@ -51,6 +77,10 @@ func (m detailModel) visibleRows() int {
 func (m detailModel) update(msg tea.Msg) (detailModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.input != inputNone {
+			return m.updateInput(msg)
+		}
+
 		maxOffset := max(0, len(m.lines)-m.visibleRows())
 		switch msg.String() {
 		case "up", "k":
@@ -80,6 +110,46 @@ func (m detailModel) update(msg tea.Msg) (detailModel, tea.Cmd) {
 	return m, nil
 }
 
+func (m detailModel) updateInput(msg tea.KeyMsg) (detailModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.input = inputNone
+		m.inputText = ""
+		return m, nil
+	case "enter":
+		mode := m.input
+		text := m.inputText
+		id := m.ticket.ID
+		m.input = inputNone
+		m.inputText = ""
+
+		switch mode {
+		case inputAssignee:
+			return m, func() tea.Msg {
+				return setAssigneeMsg{id: id, assignee: strings.TrimSpace(text)}
+			}
+		case inputNote:
+			trimmed := strings.TrimSpace(text)
+			if trimmed == "" {
+				return m, nil
+			}
+			return m, func() tea.Msg {
+				return addNoteMsg{id: id, text: trimmed}
+			}
+		}
+		return m, nil
+	case "backspace":
+		if len(m.inputText) > 0 {
+			m.inputText = m.inputText[:len(m.inputText)-1]
+		}
+	default:
+		if len(msg.String()) == 1 {
+			m.inputText += msg.String()
+		}
+	}
+	return m, nil
+}
+
 func (m detailModel) view() string {
 	var b strings.Builder
 
@@ -99,8 +169,25 @@ func (m detailModel) view() string {
 		b.WriteString("\n")
 	}
 
+	// Input bar (if active).
+	if m.input != inputNone {
+		var label string
+		switch m.input {
+		case inputAssignee:
+			label = "assignee"
+		case inputNote:
+			label = "note"
+		}
+		b.WriteString(inputLabelStyle.Render(label+": ") + m.inputText + "█\n")
+	}
+
 	// Help bar.
-	help := "↑↓/jk scroll  pgup/pgdn page  esc back  q quit"
+	var help string
+	if m.input != inputNone {
+		help = "enter confirm  esc cancel"
+	} else {
+		help = "↑↓/jk scroll  s status  p priority  a assignee  n note  esc back  q quit"
+	}
 	b.WriteString(detailHelpStyle.Render(help))
 
 	return b.String()
