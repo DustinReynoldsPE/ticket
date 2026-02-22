@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/EnderRealm/ticket/pkg/ticket"
@@ -19,6 +20,8 @@ func init() {
 	addFilterFlags(lsCmd)
 	lsCmd.Flags().String("status", "", "filter by status")
 	lsCmd.Flags().String("parent", "", "filter by parent ticket ID")
+	lsCmd.Flags().String("group-by", "", "group by: workflow | type | status | priority")
+	lsCmd.Flags().Bool("group", false, "shorthand for --group-by=workflow")
 
 	rootCmd.AddCommand(lsCmd)
 }
@@ -32,10 +35,15 @@ func runLs(cmd *cobra.Command, args []string) error {
 
 	opts := parseFilterFlags(cmd)
 
+	groupBy, _ := cmd.Flags().GetString("group-by")
+	if shorthand, _ := cmd.Flags().GetBool("group"); shorthand && groupBy == "" {
+		groupBy = "workflow"
+	}
+
 	if v, _ := cmd.Flags().GetString("status"); v != "" {
 		opts.Status = ticket.Status(v)
-	} else {
-		// Default: exclude closed.
+	} else if groupBy == "" {
+		// Default: exclude closed only when not grouping.
 		var filtered []*ticket.Ticket
 		for _, t := range tickets {
 			if t.Status != ticket.StatusClosed {
@@ -50,35 +58,132 @@ func runLs(cmd *cobra.Command, args []string) error {
 	}
 
 	tickets = ticket.Filter(tickets, opts)
-	ticket.SortByStatusPriorityID(tickets)
 
-	// Build dep display map for blocked indicators.
-	allTickets, _ := store.List()
-	statusMap := map[string]ticket.Status{}
-	for _, t := range allTickets {
-		statusMap[t.ID] = t.Status
+	if groupBy != "" {
+		return printGrouped(store, tickets, groupBy)
 	}
 
-	// Header.
-	fmt.Printf("%-9s %-3s %-11s %-14s %s\n", "ID", "P", "TYPE", "STATUS", "TITLE")
+	ticket.SortByStatusPriorityID(tickets)
+	printHeader()
+	for _, t := range tickets {
+		printRow(t)
+	}
+	return nil
+}
+
+func printGrouped(store *ticket.FileStore, tickets []*ticket.Ticket, groupBy string) error {
+	type group struct {
+		name    string
+		order   int
+		tickets []*ticket.Ticket
+	}
+
+	groups := map[string]*group{}
+	var groupOrder []string
 
 	for _, t := range tickets {
-		depStr := ""
-		var unclosed []string
-		for _, d := range t.Deps {
-			if s, ok := statusMap[d]; !ok || s != ticket.StatusClosed {
-				unclosed = append(unclosed, d)
-			}
-		}
-		if len(unclosed) > 0 {
-			depStr = " <- [" + strings.Join(unclosed, ", ") + "]"
+		var name string
+		var order int
+
+		switch groupBy {
+		case "workflow":
+			name, order = workflowGroup(store, t)
+		case "type":
+			name = string(t.Type)
+			order = ticket.TypeOrder(t.Type)
+		case "status":
+			name = string(t.Status)
+			order = statusOrderVal(t.Status)
+		case "priority":
+			name = fmt.Sprintf("P%d", t.Priority)
+			order = t.Priority
+		default:
+			return fmt.Errorf("unknown group-by value: %s (use: workflow, type, status, priority)", groupBy)
 		}
 
-		fmt.Printf("%-9s P%d  %-11s %-14s %s%s\n",
-			t.ID, t.Priority, t.Type, t.Status, t.Title, depStr)
+		g, ok := groups[name]
+		if !ok {
+			g = &group{name: name, order: order}
+			groups[name] = g
+			groupOrder = append(groupOrder, name)
+		}
+		g.tickets = append(g.tickets, t)
+	}
+
+	// Sort groups by order.
+	sort.SliceStable(groupOrder, func(i, j int) bool {
+		return groups[groupOrder[i]].order < groups[groupOrder[j]].order
+	})
+
+	first := true
+	for _, name := range groupOrder {
+		g := groups[name]
+		if len(g.tickets) == 0 {
+			continue
+		}
+
+		ticket.SortByStatusPriorityID(g.tickets)
+
+		if !first {
+			fmt.Println()
+		}
+		first = false
+
+		fmt.Printf("=== %s ===\n", g.name)
+		printHeader()
+		for _, t := range g.tickets {
+			printRow(t)
+		}
 	}
 
 	return nil
+}
+
+func workflowGroup(store *ticket.FileStore, t *ticket.Ticket) (string, int) {
+	switch t.Status {
+	case ticket.StatusInProgress:
+		return "In Progress", 1
+	case ticket.StatusOpen:
+		if ticket.IsBlocked(store, t) {
+			return "Blocked", 3
+		}
+		return "Ready", 2
+	case ticket.StatusNeedsTesting:
+		return "Needs Testing", 4
+	case ticket.StatusClosed:
+		return "Closed", 5
+	default:
+		return string(t.Status), 6
+	}
+}
+
+func statusOrderVal(s ticket.Status) int {
+	switch s {
+	case ticket.StatusInProgress:
+		return 1
+	case ticket.StatusOpen:
+		return 2
+	case ticket.StatusNeedsTesting:
+		return 3
+	case ticket.StatusClosed:
+		return 4
+	default:
+		return 5
+	}
+}
+
+func printHeader() {
+	fmt.Printf("%-9s %-3s %-11s %-14s %s\n", "ID", "P", "TYPE", "STATUS", "TITLE")
+}
+
+func printRow(t *ticket.Ticket) {
+	depStr := ""
+	if len(t.Deps) > 0 {
+		depStr = " <- [" + strings.Join(t.Deps, ", ") + "]"
+	}
+
+	fmt.Printf("%-9s P%d  %-11s %-14s %s%s\n",
+		t.ID, t.Priority, t.Type, t.Status, t.Title, depStr)
 }
 
 // addFilterFlags registers shared filter flags on a command.
