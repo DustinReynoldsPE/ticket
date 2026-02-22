@@ -1,6 +1,6 @@
 ---
 id: t-a5bc
-status: open
+status: in_progress
 deps: []
 links: []
 created: 2026-02-22T00:57:32Z
@@ -28,3 +28,10 @@ Approach:
 
 go build produces a binary, tk help outputs usage
 
+
+## Notes
+
+**2026-02-22T01:16:05Z**
+
+<!-- checkpoint: finalized -->
+Go project scaffolded: go.mod, main.go, cmd/root.go, pkg/ticket/, internal/tui/, internal/mcp/. Binary builds, help outputs usage. Module path: github.com/EnderRealm/ticket (corrected from epic design notes).
