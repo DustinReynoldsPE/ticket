@@ -1,6 +1,6 @@
 ---
 id: tic-a85c
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-22T22:02:27Z
@@ -13,6 +13,8 @@ tags: [go-parity]
 # Add NO_COLOR environment variable support
 
 
+
+
 Bash version respects NO_COLOR env var to disable ANSI color output. Go version has no color in CLI output yet, but TUI uses lipgloss colors. Should be wired up if/when CLI gets colored output.
 
 ## Design
@@ -23,3 +25,9 @@ Check os.Getenv("NO_COLOR") at startup. Pass through to any colored output. lipg
 ## Acceptance Criteria
 
 NO_COLOR=1 tk ls produces no ANSI escape sequences. TUI respects NO_COLOR.
+
+## Notes
+
+**2026-02-23T04:38:33Z**
+
+Will not build. NO_COLOR already handled in timeline command. Not adding globally.

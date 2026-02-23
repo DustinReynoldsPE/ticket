@@ -1,6 +1,6 @@
 ---
 id: tic-18e9
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-02-22T22:01:28Z
@@ -10,6 +10,7 @@ assignee: Steve Macbeth
 tags: [go-parity]
 ---
 # Go CLI parity with bash version
+
 
 
 

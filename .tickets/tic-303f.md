@@ -1,6 +1,6 @@
 ---
 id: tic-303f
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-22T22:02:20Z
@@ -11,6 +11,8 @@ parent: tic-18e9
 tags: [go-parity]
 ---
 # Add migrate-beads command
+
+
 
 
 migrate-beads command missing from Go version. Imports tickets from .beads/issues.jsonl format.
@@ -27,3 +29,9 @@ Use encoding/json to parse, create tickets via FileStore.
 ## Acceptance Criteria
 
 tk migrate-beads imports all tickets from .beads/issues.jsonl with correct field mapping.
+
+## Notes
+
+**2026-02-23T04:38:33Z**
+
+Will not build. Migrate-beads is a legacy one-time migration tool, not worth porting.
