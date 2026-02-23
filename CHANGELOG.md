@@ -1,6 +1,35 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.0] - 2026-02-23
+
+Go rewrite. Full CLI parity with bash version plus new capabilities.
+Both implementations remain supported and read/write the same ticket format.
+
+### Added
+- **Go binary** — cross-platform, single binary distribution via Homebrew and AUR
+- **TUI** (`tk ui`) — interactive ticket browser with list/detail views, inline editing, ticket creation
+- **MCP server** (`tk serve`) — stdio MCP server for Claude Code integration
+- `--json` global flag on all output commands
+- `--version` / `-v` flag (version injected at build time via GoReleaser)
+- `stats` command — project health dashboard (status/type/priority breakdowns, open ticket age)
+- `timeline` command — bar chart of tickets closed by week with `--weeks=N` flag
+- `move` command — move tickets between repos with `--recursive` for full subtree moves
+- `--group-by` flag for `ls` (workflow, type, status, priority) with `--group` shorthand
+- `--note` flag for `edit` as alias for `add-note`
+- `--design`, `--acceptance` flags support multiline text (bash awk limitation fixed)
+- GoReleaser config for darwin/linux arm64/amd64 builds
+- Comprehensive test suite (144 assertions)
+
+### Changed
+- ID generation uses nanosecond timestamps + atomic counter (eliminates rapid-create collisions)
+- `create` retries with new ID on collision (up to 5 attempts)
+
+### Fixed
+- `ls --parent` now correctly filters to children only
+- Multiline `--design` and `--acceptance` flags work correctly (bash awk limitation)
+- ID collisions when creating multiple tickets per second
+
+## [Unreleased - bash]
 
 ### Added
 - `list` alias for `ls` command
