@@ -541,6 +541,13 @@ assert_contains "tk stats" "Priority:" "stats shows priority section"
 assert_contains "tk stats" "TOTAL" "stats shows total count"
 
 # ============================================================================
+log_section "TIMELINE"
+# ============================================================================
+
+assert_contains "tk timeline" "TICKETS CLOSED BY WEEK" "timeline shows header"
+assert_ok "tk timeline --weeks=2" "timeline --weeks flag works"
+
+# ============================================================================
 log_section "ERROR HANDLING"
 # ============================================================================
 
