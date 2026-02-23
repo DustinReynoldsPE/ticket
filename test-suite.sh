@@ -548,6 +548,62 @@ assert_contains "tk timeline" "TICKETS CLOSED BY WEEK" "timeline shows header"
 assert_ok "tk timeline --weeks=2" "timeline --weeks flag works"
 
 # ============================================================================
+log_section "MOVE"
+# ============================================================================
+
+# Set up target repo
+MOVE_TARGET=$(mktemp -d)
+mkdir -p "$MOVE_TARGET/.tickets"
+
+# Single move
+MOVE1=$(tk create "Move Test Single" -d "Will be moved" --tags "movetest" | extract_id)
+track_id "$MOVE1"
+MOVE_OUTPUT=$(tk move "$MOVE1" "$MOVE_TARGET" 2>&1)
+if echo "$MOVE_OUTPUT" | grep -q "Moved $MOVE1"; then
+    log_pass "Single move succeeds"
+else
+    log_fail "Single move succeeds"
+fi
+
+# Source should be closed
+assert_contains "tk show $MOVE1" "status: closed" "Source ticket closed after move"
+assert_contains "tk show $MOVE1" "Moved to" "Source has move note"
+
+# Target should exist
+MOVE1_NEW=$(echo "$MOVE_OUTPUT" | sed -n 's/.*-> //p')
+if TICKETS_DIR="$MOVE_TARGET/.tickets" tk show "$MOVE1_NEW" > /dev/null 2>&1; then
+    log_pass "Target ticket exists after move"
+else
+    log_fail "Target ticket exists after move"
+fi
+
+# Recursive move
+MOVE_EPIC=$(tk create "Move Epic" -t epic | extract_id)
+track_id "$MOVE_EPIC"
+MOVE_CH1=$(tk create "Move Child A" --parent "$MOVE_EPIC" | extract_id)
+track_id "$MOVE_CH1"
+MOVE_CH2=$(tk create "Move Child B" --parent "$MOVE_EPIC" | extract_id)
+track_id "$MOVE_CH2"
+tk dep "$MOVE_CH2" "$MOVE_CH1"
+
+REC_OUTPUT=$(tk move "$MOVE_EPIC" "$MOVE_TARGET" -r 2>&1)
+REC_COUNT=$(echo "$REC_OUTPUT" | grep -c "Moved")
+if [[ "$REC_COUNT" -eq 3 ]]; then
+    log_pass "Recursive move moves 3 tickets"
+else
+    log_fail "Recursive move moves 3 tickets (got $REC_COUNT)"
+fi
+
+# All sources should be closed
+assert_contains "tk show $MOVE_EPIC" "status: closed" "Epic closed after recursive move"
+assert_contains "tk show $MOVE_CH1" "status: closed" "Child closed after recursive move"
+
+# Invalid target should fail
+assert_fail "tk move $MOVE1 /tmp/nonexistent-repo-xyz" "Move to invalid target fails"
+
+rm -rf "$MOVE_TARGET"
+
+# ============================================================================
 log_section "ERROR HANDLING"
 # ============================================================================
 
