@@ -531,6 +531,16 @@ assert_contains "tk ls --group" "===" "--group shorthand works"
 assert_fail "tk ls --group-by=invalid" "Reject invalid group-by value"
 
 # ============================================================================
+log_section "STATS"
+# ============================================================================
+
+assert_contains "tk stats" "PROJECT HEALTH" "stats shows header"
+assert_contains "tk stats" "Status:" "stats shows status section"
+assert_contains "tk stats" "Types:" "stats shows types section"
+assert_contains "tk stats" "Priority:" "stats shows priority section"
+assert_contains "tk stats" "TOTAL" "stats shows total count"
+
+# ============================================================================
 log_section "ERROR HANDLING"
 # ============================================================================
 
