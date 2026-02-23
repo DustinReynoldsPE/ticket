@@ -93,10 +93,14 @@ Create & edit options:
 Partial ID matching: 'tk show 5c4' matches 'nw-5c46'
 Tickets stored as markdown in .tickets/`
 
+// Version is set via -ldflags at build time.
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "tk",
-	Short: "A markdown-based ticket manager",
-	Long:  helpText,
+	Use:     "tk",
+	Short:   "A markdown-based ticket manager",
+	Long:    helpText,
+	Version: Version,
 }
 
 func init() {
