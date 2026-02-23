@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/EnderRealm/ticket/pkg/ticket"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ func init() {
 	f.String("external-ref", "", "external reference")
 	f.String("parent", "", "parent ticket ID")
 	f.String("tags", "", "comma-separated tags")
+	f.String("note", "", "append a timestamped note")
 
 	rootCmd.AddCommand(editCmd)
 }
@@ -106,6 +108,18 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	}
 	if v, _ := cmd.Flags().GetString("acceptance"); cmd.Flags().Changed("acceptance") {
 		t.Body = updateSection(t.Body, "Acceptance Criteria", v)
+		changed = true
+	}
+	if v, _ := cmd.Flags().GetString("note"); cmd.Flags().Changed("note") {
+		t.Notes = append(t.Notes, ticket.Note{
+			Timestamp: time.Now().UTC(),
+			Text:      v,
+		})
+		if idx := strings.Index(t.Body, "\n## Notes\n"); idx >= 0 {
+			t.Body = t.Body[:idx+1]
+		} else if strings.HasPrefix(t.Body, "## Notes\n") {
+			t.Body = "\n"
+		}
 		changed = true
 	}
 
