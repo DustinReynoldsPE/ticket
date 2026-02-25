@@ -34,6 +34,25 @@ const (
     ReviewApproved ReviewState = "approved"  // review passed
     ReviewRejected ReviewState = "rejected"  // review failed, needs rework
 )
+
+// ReviewRecord tracks a single review verdict with context.
+// Stored as structured notes in the ticket body (## Review Log section).
+type ReviewRecord struct {
+    Timestamp time.Time
+    Stage     Stage       // which stage was being reviewed
+    Kind      string      // "spec", "design", "impl", "code", "verify"
+    Actor     string      // "human:steve", "agent:code-reviewer"
+    State     ReviewState // approved or rejected
+    Comment   string
+}
+
+// WaitingOn describes what a ticket needs to move forward.
+type WaitingOn struct {
+    Type   string  // "human-review", "agent-review", "human-input", "agent-work", "dependency", "nothing"
+    Detail string  // e.g. "design review needed", "blocked by t-5a3f"
+    Since  time.Time
+}
+
 ```
 
 ### 1.2 Type-dependent pipeline definitions in new file `pkg/ticket/pipeline.go`
@@ -104,11 +123,13 @@ type Ticket struct {
     Created     time.Time   `yaml:"created"`
     Skipped     []Stage     `yaml:"skipped,omitempty,flow"` // NEW
     Conversations []string  `yaml:"conversations,omitempty,flow"` // NEW
+    WaitOn      string      `yaml:"wait-on,omitempty"` // NEW: what's blocking progress
 
     // Parsed from markdown, not stored in frontmatter.
-    Title string `yaml:"-"`
-    Body  string `yaml:"-"`
-    Notes []Note `yaml:"-"`
+    Title   string         `yaml:"-"`
+    Body    string         `yaml:"-"`
+    Notes   []Note         `yaml:"-"`
+    Reviews []ReviewRecord `yaml:"-"` // NEW: parsed from ## Review Log section
 }
 ```
 
@@ -180,13 +201,149 @@ func NeedsMigration(t *Ticket) bool
 - `ValidateStage()` checks stage is valid for ticket type
 - `ValidateGates()` checks all gate preconditions without advancing
 
-### 1.10 Tests
+### 1.10 Inbox + Next Action derivation in `pkg/ticket/inbox.go`
+
+The unified inbox and "what's next" views are **derived state** — they're computed from ticket fields, not stored separately. This keeps the source of truth in the ticket files and avoids sync problems.
+
+```go
+// ActionKind classifies what a ticket needs right now.
+type ActionKind string
+
+const (
+    ActionHumanReview ActionKind = "human-review"  // review=pending, actor is human
+    ActionAgentReview ActionKind = "agent-review"   // review=pending, actor is agent
+    ActionHumanInput  ActionKind = "human-input"    // conversational stage (triage, spec, verify)
+    ActionAgentWork   ActionKind = "agent-work"     // autonomous stage (design, implement, test)
+    ActionBlocked     ActionKind = "blocked"        // unresolved dependency
+    ActionReady       ActionKind = "ready"          // can advance, nothing blocking
+)
+
+// InboxItem represents one thing that needs human attention.
+type InboxItem struct {
+    Ticket     *Ticket
+    Action     ActionKind
+    Detail     string      // human-readable: "design review needed", "spec: build acceptance criteria"
+    Since      time.Time   // when this item entered the inbox (stage change timestamp)
+    Project    string      // parent epic title (or "" if standalone)
+    ProjectID  string      // parent epic ID (or "")
+    Priority   int         // inherited: max(own priority, parent priority)
+}
+
+// Inbox returns all tickets that need human attention, sorted by priority
+// then age (oldest first within same priority).
+// This is the unified inbox — the single view of "what needs me."
+func Inbox(store *FileStore) ([]InboxItem, error)
+
+// NextAction returns the computed next action for a single ticket.
+func NextAction(t *Ticket, store *FileStore) InboxItem
+```
+
+**What lands in the inbox** (items needing human action):
+
+| Condition | ActionKind | Example |
+|-----------|-----------|---------|
+| Stage is conversational + not done | `human-input` | Ticket at `spec`, needs human to build AC |
+| `review: pending` + last review actor is `human:*` | `human-review` | Design review awaiting human approval |
+| `review: pending` + no actor hint → assume human | `human-review` | Review requested, nobody assigned |
+| `review: rejected` by agent, needs human judgment | `human-review` | Agent rejected but human may override |
+| Gate failed on advance attempt (advisory) | `human-review` | Gate flagged an issue, human decides |
+
+**What does NOT land in the inbox** (handled by agents/automation):
+
+| Condition | ActionKind | Where it shows |
+|-----------|-----------|---------------|
+| `review: pending` + actor is `agent:*` | `agent-review` | Orchestrator queue |
+| Stage is autonomous + ready for agent | `agent-work` | Orchestrator queue |
+| All deps resolved, no review needed | `ready` | "What's Next" panel |
+| Unresolved deps | `blocked` | Blocked panel |
+
+**Deriving "conversational" vs "autonomous" stage:**
+
+```go
+// ConversationalStages are stages that require human interaction.
+// Everything else is autonomous (agent-driven).
+var ConversationalStages = map[Stage]bool{
+    StageTriage: true,
+    StageSpec:   true,
+    StageVerify: true,
+}
+
+// IsConversational returns true if the stage requires human interaction.
+func IsConversational(stage Stage) bool
+```
+
+**Project grouping for "What's Next":**
+
+```go
+// ProjectSummary aggregates ticket state across a project (epic + children).
+type ProjectSummary struct {
+    Epic          *Ticket       // the parent epic (nil for standalone tickets)
+    Tickets       []*Ticket     // all tickets in this project
+    InboxCount    int           // how many items need human attention
+    BlockedCount  int           // how many are blocked
+    ActiveCount   int           // how many are in progress (not triage, not done)
+    Progress      float64       // 0.0-1.0: fraction of pipeline stages completed across all tickets
+    NextActions   []InboxItem   // what needs doing, sorted by priority
+    StageBreakdown map[Stage]int // how many tickets at each stage
+}
+
+// Projects returns all active projects (epics with children + standalone tickets),
+// sorted by priority then progress (most complete first — finish what you started).
+func Projects(store *FileStore) ([]ProjectSummary, error)
+```
+
+**Sort order for "What's Next":** Most-complete-first within same priority. A ticket at `test` stage is closer to done than one at `triage` — prioritize finishing it. This prevents the trap of always starting new work.
+
+### 1.11 Review log parsing in `pkg/ticket/format.go`
+
+Reviews are stored in the ticket body as a structured `## Review Log` section:
+
+```markdown
+## Review Log
+
+**2026-02-25T14:30:00Z** [design] agent:design-reviewer → approved
+Codebase paths verified. API patterns consistent with existing handlers.
+
+**2026-02-25T15:00:00Z** [design] human:steve → approved
+LGTM, proceed to implementation.
+
+**2026-02-25T18:45:00Z** [impl] agent:impl-reviewer → rejected
+Acceptance criteria #3 (error handling) not covered. Missing validation in CreateHandler.
+```
+
+- `Parse()` extracts `ReviewRecord` structs from this section
+- `Serialize()` writes them back in canonical format
+- `SetReview()` appends to this section (doesn't overwrite)
+- The `review` YAML field reflects the *latest* review state; the log has full history
+
+This means the inbox can determine: "who is the review waiting on?" by looking at the review kind and the gate definition for the current stage. If the gate says `impl-review` and `code-review` must pass, and `impl-review` is `approved` but `code-review` hasn't happened yet, the inbox knows to show "code review pending."
+
+### 1.12 MCP tools for inbox/next in Phase 2 (preview)
+
+These tools get implemented in Phase 2, but the core logic is built here:
+
+```go
+// ticket_inbox: Returns items needing human attention.
+// Filters: --project <epic-id>, --action <kind>, --assignee <name>
+// Sort: priority, then age
+
+// ticket_next: Returns per-project summary of what to do next.
+// Filters: --project <epic-id>
+// Returns: ProjectSummary[] with inbox items and progress
+
+// ticket_dashboard: Single call that returns everything the dashboard home needs.
+// Returns: { inbox: InboxItem[], projects: ProjectSummary[], stats: {...} }
+// This avoids N+1 MCP calls from the dashboard.
+```
+
+### 1.13 Tests
 
 - `pipeline_test.go`: Pipeline definitions, NextStage, HasStage for all types
 - `gates_test.go`: Gate checks for every transition, mandatory vs advisory
 - `workflow_test.go`: Update existing + add Advance, Skip, SetReview tests
 - `migrate_test.go`: All status→stage mappings, idempotency, round-trip
-- `format_test.go`: Update for new fields, backward compat with old format
+- `format_test.go`: Update for new fields, backward compat with old format, review log round-trip
+- `inbox_test.go`: Inbox derivation — conversational stages surface as human-input, pending reviews surface correctly, blocked tickets excluded from inbox, project grouping works, sort order respects priority then completeness
 
 **Testable checkpoint:** All unit tests pass. `go test ./pkg/ticket/...` green. No CLI or MCP changes yet — this is purely library-level.
 
@@ -207,6 +364,8 @@ func NeedsMigration(t *Ticket) bool
 | `tk log <id>` | Show full stage transition history (from Notes) |
 | `tk pipeline [--stage <stage>] [--type <type>]` | List tickets grouped by pipeline stage |
 | `tk migrate [--dry-run]` | Rewrite all tickets: status→stage |
+| `tk inbox [--project <epic-id>] [--assignee <name>]` | Show items waiting on human action |
+| `tk next [--project <epic-id>]` | Show per-project next actions and progress |
 
 ### 2.2 New MCP tools
 
@@ -218,6 +377,9 @@ func NeedsMigration(t *Ticket) bool
 | `ticket_log` | Get stage transition history |
 | `ticket_pipeline` | Get tickets grouped by pipeline stage |
 | `ticket_migrate` | Run migration (status→stage) |
+| `ticket_inbox` | Items needing human attention (for dashboard unified inbox) |
+| `ticket_next` | Per-project summaries with next actions (for dashboard what's-next) |
+| `ticket_dashboard` | Combined inbox + projects + stats in one call (avoids N+1) |
 
 ### 2.3 Updated CLI commands
 
@@ -528,25 +690,118 @@ Or via the `/review` skill, which dispatches to the appropriate review agent(s) 
 **Repo:** `forge`
 **Goal:** Update the web dashboard for pipeline view and build the stage-aware orchestrator.
 
-### 7.1 Dashboard updates
+### 7.1 Dashboard home: Unified Inbox + What's Next
 
-**Pipeline view (replaces kanban):**
-- Columns are pipeline stages, not statuses
-- Type selector filters to show type-specific pipeline
-- Tickets show: title, priority, review state, assignee
-- Color coding: review=pending (yellow), review=approved (green), review=rejected (red)
-- Click ticket to expand: full details, review log, conversations, notes
+The dashboard home page has two primary panels. Everything else is secondary navigation.
 
-**Stage actions:**
+**Unified Inbox (left panel / top on mobile):**
+
+The single view of "what needs me right now." Powered by `ticket_inbox` MCP tool / `GET /api/inbox`.
+
+```
+┌─ INBOX (7 items) ──────────────────────────────────────────────┐
+│                                                                 │
+│ ● REVIEW  t-5a3f  Auth service design       P1  Acme project  │
+│   Design review needed · waiting 2h                             │
+│   [Approve] [Reject] [Open]                                    │
+│                                                                 │
+│ ● REVIEW  t-8b2c  Payment error handling    P0  Acme project  │
+│   Code review needed · waiting 45m                              │
+│   [Approve] [Reject] [Open]                                    │
+│                                                                 │
+│ ● INPUT   t-9d1e  User onboarding flow      P2  Portal v2     │
+│   Spec stage: build acceptance criteria                         │
+│   [Resume conversation] [Open]                                  │
+│                                                                 │
+│ ● INPUT   t-3f7a  CLI help improvements     P3  (standalone)  │
+│   Triage stage: needs type and priority                         │
+│   [Resume conversation] [Open]                                  │
+│                                                                 │
+│ ● VERIFY  t-2c4b  Search performance fix    P1  Acme project  │
+│   Verify stage: walk through acceptance criteria                │
+│   [Start verification] [Open]                                   │
+│                                                                 │
+│ ● DECIDE  t-6e8f  API rate limiting         P2  Portal v2     │
+│   Agent rejected design — review needed                         │
+│   [View agent feedback] [Override] [Open]                       │
+│                                                                 │
+│ ● DECIDE  t-1a9c  Cache invalidation        P2  Acme project  │
+│   Advisory gate: test coverage below 80%                        │
+│   [Advance anyway] [Open]                                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Inbox item types and their actions:
+- **REVIEW**: Pending human review. Actions: Approve, Reject (inline with comment modal)
+- **INPUT**: Conversational stage needing human. Action: Resume conversation (launches skill)
+- **VERIFY**: Acceptance criteria walkthrough. Action: Start verification (launches /verify skill)
+- **DECIDE**: Agent surfaced an issue that needs human judgment. Actions: view feedback, override, or send back
+
+Sort order: Priority first, then waiting time (longest-waiting first within same priority). Critical (P0) items always surface at top regardless of age.
+
+Filter controls: by project (epic), by action type, by assignee.
+
+**What's Next (right panel / bottom on mobile):**
+
+Per-project consolidated view of active work. Powered by `ticket_next` MCP tool / `GET /api/projects`.
+
+```
+┌─ ACTIVE PROJECTS ──────────────────────────────────────────────┐
+│                                                                 │
+│ ▼ Acme project (t-0001)                    P1  ████████░░ 78% │
+│   12 tickets · 3 in inbox · 1 blocked                          │
+│   Next: Review auth service design (t-5a3f)                    │
+│         Review payment error handling (t-8b2c)                  │
+│         Unblock: t-7c3d waiting on t-5a3f                      │
+│                                                                 │
+│ ▼ Portal v2 (t-0042)                       P2  ████░░░░░░ 35% │
+│   8 tickets · 2 in inbox · 0 blocked                           │
+│   Next: Build AC for onboarding flow (t-9d1e)                  │
+│         Decide on API rate limiting design (t-6e8f)             │
+│                                                                 │
+│ ▼ Standalone tickets                            ██████░░░░ 60% │
+│   4 tickets · 1 in inbox · 0 blocked                           │
+│   Next: Triage CLI help improvements (t-3f7a)                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Project summary shows:
+- **Progress bar**: Fraction of total pipeline stages completed across all tickets in the project. A 7-stage feature at `test` = 5/7 complete. Weighted by ticket count.
+- **Inbox count**: How many items in this project need you
+- **Blocked count**: How many are stuck on dependencies
+- **Next actions**: Top 3 highest-leverage actions for this project, derived from inbox items + ready tickets. "Finish what you started" — nearly-done tickets surface first.
+
+Expanding a project shows the full pipeline view for that project's tickets.
+
+**Pipeline view (secondary, per-project):**
+
+When you expand/click a project, you see the pipeline:
+
+```
+┌─ Acme project pipeline ────────────────────────────────────────┐
+│                                                                 │
+│ triage    spec      design     implement   test     verify done│
+│ ───────  ───────   ────────   ──────────  ──────  ────── ─────│
+│                    ●t-5a3f    ●t-7c3d     ●t-2c4b         ✓×8 │
+│                    ⌛review    ⛔blocked   ⌛review              │
+│                               ●t-8b2c                          │
+│                               ⌛review                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Each column is a pipeline stage
+- Tickets show their review state (⌛pending, ✓approved, ✗rejected) and blocked state (⛔)
+- Clicking a ticket opens detail panel with full info + actions
+- "Done" column shows collapsed count
+
+**Stage actions (from any view):**
 - "Advance" button: triggers `ticket_advance` via API, shows gate check results
 - "Review" buttons: approve/reject with comment modal
 - "Run Agent" button: dispatches appropriate agent for current stage
 - "Auto-advance" toggle: run full pipeline autonomously up to a specified stop-stage
-
-**Review panel:**
-- Shows pending reviews across all tickets
-- Filter by review type (design, impl, code)
-- Quick approve/reject from the panel
 
 ### 7.2 Stage-aware orchestrator
 
@@ -587,17 +842,22 @@ New/modified endpoints:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/inbox` | GET | Unified inbox: items needing human attention |
+| `/api/projects` | GET | Active projects with progress + next actions |
+| `/api/dashboard` | GET | Combined inbox + projects + stats (single call for page load) |
 | `/api/tickets` | GET | List with stage/review filters |
+| `/api/tickets/:id` | GET | Full ticket detail |
 | `/api/tickets/:id/advance` | POST | Advance ticket (with gate checks) |
 | `/api/tickets/:id/review` | POST | Record review verdict |
 | `/api/tickets/:id/skip` | POST | Skip stages |
 | `/api/tickets/:id/log` | GET | Stage transition history |
 | `/api/pipeline` | GET | All tickets grouped by stage |
+| `/api/pipeline/:epicId` | GET | Pipeline view for a specific project |
 | `/api/orchestrate` | POST | Start orchestrated pipeline run |
 | `/api/orchestrate/:runId` | GET | Check orchestration status |
 | `/api/orchestrate/:runId/events` | GET (SSE) | Stream orchestration progress |
 
-All ticket-mutating endpoints delegate to the `tk` MCP server (or call `pkg/ticket` directly if forge is Go-based, or shell to `tk` CLI as fallback).
+All ticket-reading endpoints call `ticket_inbox`, `ticket_next`, `ticket_dashboard` MCP tools (or `pkg/ticket` directly if forge is Go-based). All ticket-mutating endpoints delegate to `ticket_advance`, `ticket_review`, etc.
 
 ### 7.4 Learning integration
 
@@ -606,7 +866,7 @@ All ticket-mutating endpoints delegate to the `tk` MCP server (or call `pkg/tick
 - Dashboard home shows: velocity, active patterns, recent learnings
 - Nightly pipeline writes discovered learnings into relevant ticket Notes sections
 
-**Testable checkpoint:** Dashboard shows pipeline view. Clicking "Advance" triggers gate checks and advances. "Run Agent" dispatches the right agent. Auto-advance runs a ticket through multiple stages. SSE updates show real-time progress.
+**Testable checkpoint:** Dashboard home loads with inbox and project panels. Inbox shows correct items (reviews, conversational stages, agent escalations) sorted by priority then age. What's Next shows per-project progress and top actions. Clicking a project expands to pipeline view. Inline approve/reject works from inbox. "Resume conversation" launches correct skill. Auto-advance runs a ticket through stages with SSE progress updates.
 
 ---
 
