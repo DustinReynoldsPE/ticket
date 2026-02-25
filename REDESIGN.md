@@ -71,25 +71,38 @@ This proposal redesigns the system so the workflow is **structurally enforced** 
                   └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-### Stage Definitions
+### Stage Definitions (Full Pipeline — Features)
 
 | Stage | Entry Gate | Who Acts | Exit Gate | Artifacts |
 |-------|-----------|----------|-----------|-----------|
 | **triage** | None (new idea) | Human or AI | Human marks "ready to spec" | Title, rough description, type, priority |
 | **spec** | Triage approved | AI builds ticket, human reviews | Human approves spec | Full description, acceptance criteria (EARS format), scope, context |
-| **design** | Spec approved | AI writes design, design-review agent validates, human reviews | Human approves design | Design section, implementation plan, file list, test plan |
-| **implement** | Design approved | AI implements, impl-review agent verifies completeness, code-review agent reviews | All reviews pass | Code changes, PR/branch |
+| **design** | Spec approved | AI writes design, design-review agent validates (advisory), human reviews | Human approves design | Design section, implementation plan, file list, test plan |
+| **implement** | Design approved | AI implements, impl-review agent verifies completeness (mandatory), code-review agent reviews (mandatory) | All reviews pass | Code changes, PR/branch |
 | **test** | Implementation reviewed | AI runs tests, human runs manual tests | Tests pass | Test results, coverage |
 | **verify** | Tests pass | Human acceptance testing | Human approves | Verification notes |
 | **done** | Verified | Auto (merge + close) | N/A | Merged code |
+
+### Type-Dependent Pipelines
+
+Not every ticket needs the full pipeline. The stages a ticket passes through depend on its type:
+
+```
+feature:  triage → spec → design → implement → test → verify → done  (7 stages)
+bug:      triage → implement → test → verify → done                   (5 stages)
+chore:    triage → implement → done                                    (3 stages)
+epic:     triage → spec → design → done                                (4 stages)
+```
+
+The `tk advance` command knows each type's pipeline and advances to the correct next stage. Skip (`tk skip`) remains available for edge cases — a "bug" that actually needs design work, or a "chore" that should be tested.
 
 ### Key Design Decisions
 
 **1. Stages vs. statuses.** The current system uses "status" as a flat enum. The redesign uses "stage" — a position in a pipeline. Every ticket moves forward through stages. The stage tells you exactly what needs to happen next and who needs to do it.
 
-**2. Review is a sub-state, not a stage.** Within each stage, work can be `active` (being worked on) or `review` (awaiting review). This avoids stage proliferation while still tracking review state.
+**2. Review is a sub-state, not a stage.** Within each stage, work can be `active` (being worked on) or `review` (awaiting review). This avoids stage proliferation while still tracking review state. Agent reviews are mandatory gates at `implement → test`; advisory-but-visible at all other transitions.
 
-**3. Gates are structural.** `tk` itself enforces that you can't move a ticket from `spec` to `implement` without going through `design`. The skill doesn't have to remember — the tool enforces it.
+**3. Gates are structural and type-aware.** `tk` itself enforces stage ordering based on ticket type. A feature can't skip from `spec` to `implement` without `design`. A bug goes straight from `triage` to `implement`. The tool enforces it — skills don't have to remember.
 
 **4. Agents are actors, not workflows.** Instead of one monolithic `/create-feature` skill that does everything, each stage has focused agents:
 - **Spec agent**: Takes triage info, builds structured ticket
@@ -100,7 +113,7 @@ This proposal redesigns the system so the workflow is **structurally enforced** 
 - **Code review agent**: Reviews code quality, patterns, security
 - **Test agent**: Runs tests, verifies coverage
 
-**5. Conversations are first-class.** Some stages (triage, spec) may involve back-and-forth. The system tracks conversation sessions linked to tickets, preserving the decision trail.
+**5. Conversations are first-class.** Some stages (triage, spec) may involve back-and-forth. The system tracks conversation sessions linked to tickets via session IDs *and* preserves focused decision summaries inline in the ticket's Notes section. Session links answer "what happened?"; inline summaries answer "what was decided?"
 
 **6. Stage skipping is explicit.** Small bug fixes don't need a full design phase. The system supports explicit stage skipping (`tk advance <id> --skip-to implement --reason "trivial fix"`) with an audit trail — but skipping is a conscious act, not a default.
 
@@ -181,12 +194,15 @@ Decided on JWT over session cookies for API-first approach.
 
 **Stage transition rules (enforced by `tk advance`):**
 ```
-triage   → spec       (requires: description exists)
-spec     → design     (requires: acceptance criteria exist, review=approved)
-design   → implement  (requires: design section exists, implementation plan exists, review=approved)
-implement→ test       (requires: code review approved, impl review approved)
-test     → verify     (requires: test results recorded, all pass)
-verify   → done       (requires: review=approved)
+triage   → spec       (requires: description exists)                              [feature, epic]
+triage   → implement  (requires: description exists)                              [bug, chore]
+spec     → design     (requires: acceptance criteria exist, review=approved)       [feature, epic]
+design   → implement  (requires: design + plan exist, review=approved)             [feature]
+design   → done       (requires: design exists, review=approved)                   [epic]
+implement→ test       (requires: code-review=approved, impl-review=approved)       [feature, bug] MANDATORY
+implement→ done       (requires: advisory review surfaced)                         [chore]
+test     → verify     (requires: test results recorded, all pass)                  [feature, bug]
+verify   → done       (requires: review=approved)                                  [feature, bug]
 ```
 
 ---
@@ -400,7 +416,7 @@ Your requirement: "Idea generation... may or may not be conversational." And: "A
 
 The current system has no concept of conversations linked to tickets. Decisions made during brainstorming vanish when the session ends (unless manually captured in notes).
 
-### The Solution: Session Links
+### The Solution: Session Links + Inline Summaries
 
 Tickets gain a `conversations` field — an array of session IDs linking to Claude Code sessions where this ticket was discussed.
 
@@ -410,10 +426,11 @@ conversations: [sess-abc123, sess-def456]
 
 When a skill runs in conversational mode, it:
 1. Records the session ID on the ticket: `tk edit t-5a3f --add-conversation $SESSION_ID`
-2. The session summary (via the existing PreCompact hook) captures decisions
-3. The nightly pipeline links session summaries to tickets
+2. The session summary (via the existing PreCompact hook) captures the full conversation context
+3. At the end of the conversational phase, the agent writes a focused decision summary (3-5 bullets) into the ticket's `## Notes` section
+4. The nightly pipeline links session summaries to tickets for cross-referencing
 
-This preserves the decision trail without requiring the agent to manually transcribe everything.
+The session link answers "what happened?" — the full decision trail if you ever need to understand why. The inline summary answers "what was decided?" — the quick reference that downstream agents and future-you actually need.
 
 ### Conversational vs. Autonomous Mode
 
@@ -580,7 +597,7 @@ This advances through stages automatically, using agents for each phase and agen
 
 1. **Don't build a custom agent framework.** Use Claude Code's built-in subagents, Agent SDK, and Agent Teams. The infrastructure exists — you just need the right agent definitions and orchestration logic.
 
-2. **Don't over-engineer the stage system.** 7 stages is already more than most tickets need. The skip mechanism handles simple cases. Resist adding sub-stages or parallel tracks.
+2. **Don't over-engineer the stage system.** 7 stages for features, fewer for simpler types. Type-dependent pipelines handle the ergonomics. Resist adding sub-stages, parallel tracks, or new ticket types just to get different pipelines.
 
 3. **Don't abandon the filesystem-as-database approach.** It's one of your system's greatest strengths. The redesign adds fields to YAML frontmatter — it doesn't add a database.
 
@@ -590,16 +607,29 @@ This advances through stages automatically, using agents for each phase and agen
 
 ---
 
-## Open Questions
+## Decisions (Finalized)
 
-1. **Stage naming**: `triage → spec → design → implement → test → verify → done` — are these the right stages? Should `spec` and `design` be combined for simpler tickets?
+1. **Stage naming: Type-dependent pipelines.**
+   ```
+   feature:  triage → spec → design → implement → test → verify → done
+   bug:      triage → implement → test → verify → done
+   chore:    triage → implement → done
+   epic:     triage → spec → design → done
+   ```
+   Skip available for edge cases in any direction (e.g., a "bug" that needs design work).
 
-2. **Review actors**: Should agent reviews be mandatory or advisory? Current proposal: mandatory for `implement` stage (code review + impl review must pass), advisory for `design` (human makes final call).
+2. **Review actors: Mandatory at implement, advisory elsewhere.**
+   Agent reviews (code-review + impl-review) are mandatory gates at the `implement → test` transition. At all other stages, agent reviews are advisory — feedback is always surfaced in `tk advance` output and logged on the ticket, but doesn't block advancement.
 
-3. **Conversation storage**: Link to Claude session IDs (requires session data to be accessible), or inline conversation summaries in the ticket?
+3. **Conversation storage: Both session links and inline summaries.**
+   Tickets store session IDs in a `conversations` field for full traceability. Additionally, at the end of each conversational phase, the agent writes a focused decision summary (3-5 bullets) into the ticket's `## Notes` section. Different audiences, different purposes: session links answer "what happened?", inline summaries answer "what was decided?"
 
-4. **Forge naming**: Is `forge` the right name for the consolidated repo? Alternatives: `workshop`, `foundry`, `workbench`, `smithy`.
+4. **Repo naming: `forge`.**
+   The consolidated workflow repo is named `forge`. `tk` remains the standalone ticket engine. `forge` is the workshop: skills, agents, dashboard, learning pipeline, data.
 
-5. **Backward compatibility**: How long to support old `status` field? Suggest: one release with automatic migration, then remove.
+5. **Backward compatibility: One release of dual support, then hard cut.**
+   One release where `tk` reads both `status` and `stage` fields (prefers `stage`, falls back to `status`). A `tk migrate` command rewrites all tickets in-place. The following release drops `status` support entirely.
+   Migration mapping: `open→triage`, `in_progress→implement`, `needs_testing→test`, `closed→done`.
 
-6. **Agent model selection**: Which stages warrant Opus vs. Sonnet? Proposal: Design + Implementation on Opus, reviews on Sonnet, spec building on Sonnet.
+6. **Agent model selection: Opus everywhere, configurable down.**
+   All agents run on Opus by default. Per-role model override available via configuration for when quota pressure requires it (e.g., switching review agents to Sonnet). Keep it simple until optimization is needed.
