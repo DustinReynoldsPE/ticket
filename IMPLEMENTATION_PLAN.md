@@ -867,25 +867,327 @@ Expanding a project shows the full pipeline view for that project's tickets.
 
 **Pipeline view (secondary, per-project):**
 
-When you expand/click a project, you see the pipeline:
+When you expand/click a project, you see the pipeline board with ticket cards in stage columns.
+
+### 7.1.1 Ticket Card (pipeline board)
+
+The ticket card lives on the pipeline/kanban board. Each card must communicate its state in a single glance — what it is, where it's at, and what it needs.
+
+**Design principles:**
+1. Type is identity — color-coded left border, not a label you have to read
+2. "What does this need right now" is the hero — not the title, not the metadata
+3. Pipeline position is visible on every card (you shouldn't need the column header)
+4. Review state is the primary interaction surface
+5. Dense but not cluttered — whitespace separates zones of meaning
+
+**Card anatomy (4 zones):**
 
 ```
-┌─ Acme project pipeline ────────────────────────────────────────┐
-│                                                                 │
-│ triage    spec      design     implement   test     verify done│
-│ ───────  ───────   ────────   ──────────  ──────  ────── ─────│
-│                    ●t-5a3f    ●t-7c3d     ●t-2c4b         ✓×8 │
-│                    ⌛review    ⛔blocked   ⌛review              │
-│                               ●t-8b2c                          │
-│                               ⌛review                          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│ IDENTITY    What is this?                   │
+│ ACTION      What does it need right now?    │
+│ PROGRESS    Where is it in its pipeline?    │
+│ META        Context at a glance             │
+└─────────────────────────────────────────────┘
 ```
 
-- Each column is a pipeline stage
-- Tickets show their review state (⌛pending, ✓approved, ✗rejected) and blocked state (⛔)
-- Clicking a ticket opens detail panel with full info + actions
-- "Done" column shows collapsed count
+**Full card mockups by state:**
+
+A feature waiting for design review:
+```
+┌──────────────────────────────────────────┐
+│ ▓ feat  Auth service design        !! P1 │
+│                                          │
+│ ◉ Design review needed                   │
+│   waiting 2h · requested by agent        │
+│   [Approve] [Reject]                     │
+│                                          │
+│ ○───○───◉───○───○───○───○                │
+│ tri  spc  des  imp  tst  vfy  done       │
+│                                          │
+│ api:t-5a3f · steve · 3d · 2 deps (1 ✓)  │
+└──────────────────────────────────────────┘
+```
+
+A bug blocked on a dependency:
+```
+┌──────────────────────────────────────────┐
+│ ▓ bug   Payment timeout error       ! P0 │
+│                                          │
+│ ⛔ Blocked on api:t-5a3f                  │
+│   Auth service design (design stage)     │
+│                                          │
+│ ○───◉─ ─ ─○───○───○                      │
+│ tri  imp      tst  vfy  done             │
+│                                          │
+│ api:t-7c3d · unassigned · 5d · 1 dep     │
+└──────────────────────────────────────────┘
+```
+
+A task where an agent is actively working:
+```
+┌──────────────────────────────────────────┐
+│ ▓ task  Refactor ID generation      P2   │
+│                                          │
+│ ⟳ Agent working: impl-agent              │
+│   started 12m ago                        │
+│                                          │
+│ ○───○───●───○───○                        │
+│ tri  imp  imp  tst  vfy  done            │
+│         ↑ here                           │
+│                                          │
+│ tk:t-3f7a · claude · 1d · 0 deps         │
+└──────────────────────────────────────────┘
+```
+
+A feature at a conversational stage needing human input:
+```
+┌──────────────────────────────────────────┐
+│ ▓ feat  User onboarding flow        P2   │
+│                                          │
+│ 💬 Needs input: build acceptance criteria │
+│   spec stage · last session 1d ago       │
+│   [Resume conversation]                  │
+│                                          │
+│ ○───●───○───○───○───○───○                │
+│ tri  spc  des  imp  tst  vfy  done       │
+│                                          │
+│ webapp:t-9d1e · steve · 4d · 0 deps      │
+└──────────────────────────────────────────┘
+```
+
+A chore ready to advance (no blockers, gates pass):
+```
+┌──────────────────────────────────────────┐
+│ ▓ chore Update CI config            P3   │
+│                                          │
+│ ✓ Ready to advance                       │
+│   all gates pass                         │
+│   [Advance to done]                      │
+│                                          │
+│ ○───●───○                                │
+│ tri  imp  done                           │
+│                                          │
+│ tk:t-2c4b · steve · 2d · 0 deps          │
+└──────────────────────────────────────────┘
+```
+
+**Zone details:**
+
+**Identity zone (top row):**
+- Left border color = type (feature=blue, bug=red, task=gray, epic=purple, chore=green)
+- Type abbreviated: `feat`, `bug`, `task`, `epic`, `chore` — small, muted
+- Title truncated to ~30 chars (full title on hover)
+- Priority: `!!!` P0, `!!` P1, `!` P2, dim for P3-P4. Red text for P0.
+
+**Action zone (middle, the hero):**
+- Icon + bold primary action line:
+  - `◉` Review needed (amber)
+  - `⛔` Blocked (red)
+  - `⟳` Agent working (blue, animated pulse)
+  - `💬` Needs input (purple)
+  - `✓` Ready to advance (green)
+  - `✗` Review rejected (red)
+- Secondary detail line: context about the action (who's it waiting on, how long, what's blocking)
+- Inline action buttons when applicable (Approve/Reject for reviews, Advance for ready, Resume for input)
+
+**Progress zone (pipeline mini-bar):**
+- Horizontal dot track showing all stages for this ticket's type
+- Filled dots = completed stages, current dot = highlighted, future = outline
+- Dashed segments for skipped stages
+- Stage abbreviations below for orientation (tri, spc, des, imp, tst, vfy, done)
+- The mini-bar shows the ticket's *type-specific* pipeline (chores have 3 dots, features have 7)
+
+**Meta zone (bottom row, muted):**
+- Qualified ID (`api:t-5a3f`)
+- Assignee (or `unassigned` in dim)
+- Age since created (`3d`, `2w`)
+- Dep summary: `2 deps (1 ✓)` — count with resolved fraction
+
+**Interaction:**
+- Click card → full detail slide-out panel (ticket body, review log, notes, conversations)
+- Click action buttons → inline action (approve opens comment modal, advance triggers gate check)
+- Drag card between columns → `ticket_advance` with confirmation if gates exist
+- Right-click → context menu (assign, tag, link, skip stage)
+
+**Visual states (card background/border):**
+- Default: white/neutral
+- Blocked: faint red tint on left border
+- Agent working: faint blue pulse on border
+- Review pending: amber left accent
+- Ready: green left accent
+- Stale (no activity > 3 days): subtle dimming, `stale` badge
+
+### 7.1.2 Project Card (dashboard home)
+
+The project card lives on the "What's Next" panel. It answers: "How is this project doing and what should I do about it?"
+
+**Design principles:**
+1. Progress is the hero — is this project moving or stuck?
+2. Stage distribution tells the shape of work (bottleneck detection)
+3. Next actions are the call to action — don't just show state, show what to do
+4. Health signals surface problems without you having to drill in
+5. Expandable: collapsed view is a summary, expanded shows full pipeline
+
+**Card anatomy (5 zones):**
+
+```
+┌───────────────────────────────────────────────────────┐
+│ HEADER       Title + priority + progress              │
+│ DISTRIBUTION Where are tickets in the pipeline?       │
+│ HEALTH       Key metrics at a glance                  │
+│ ACTIONS      What should I do next?                   │
+│ FOOTER       Repos, last activity                     │
+└───────────────────────────────────────────────────────┘
+```
+
+**Full card mockups:**
+
+Healthy project, mostly done:
+```
+┌───────────────────────────────────────────────────────┐
+│                                                       │
+│  Acme project                          !! P1          │
+│  api:t-0001 · epic                                    │
+│                                                       │
+│  ████████████████████████████████░░░░░░░░  78%        │
+│                                                       │
+│  ┈┈┈┈┈┈╌╌╌╌╌╌╌╌╌┬───────┬───────┬──┬──┬─────────    │
+│  triage  spec  design  impl   test vfy   done (8)     │
+│                   1      2      1            ████      │
+│                                                       │
+│  12 active  ╷  3 need you  ╷  1 blocked  ╷  8 done   │
+│                                                       │
+│  → Review auth service design (api:t-5a3f) · 2h       │
+│  → Review payment error handling (api:t-8b2c) · 45m   │
+│  → Unblock api:t-7c3d (waiting on api:t-5a3f)         │
+│                                                       │
+│  api, webapp · last activity 45m ago                   │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
+
+Project that's stalled:
+```
+┌───────────────────────────────────────────────────────┐
+│                                                       │
+│  Portal v2                             !  P2          │
+│  webapp:t-0042 · epic                  ⚠ stalled      │
+│                                                       │
+│  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%       │
+│                                                       │
+│  ┬──────┬──────┈┈┈┈┈┈┈╌╌╌╌╌╌╌╌╌┈┈┈┈┈┈┈──────        │
+│  triage  spec   design   impl   test  vfy  done (2)   │
+│    1      3       2                          ██        │
+│                                                       │
+│   6 active  ╷  2 need you  ╷  0 blocked  ╷  2 done   │
+│                                                       │
+│  → Build AC for onboarding flow (webapp:t-9d1e)       │
+│  → Decide on API rate limiting (webapp:t-6e8f)        │
+│    ⚠ 3 tickets in spec with no activity for 2d        │
+│                                                       │
+│  webapp · last activity 2d ago                         │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
+
+Small standalone group:
+```
+┌───────────────────────────────────────────────────────┐
+│                                                       │
+│  Standalone tickets                                   │
+│  4 tickets across tk, api                             │
+│                                                       │
+│  ████████████████████████░░░░░░░░░░░░░░░░  60%        │
+│                                                       │
+│  ┬─────────────┬───────┬──────────────────            │
+│  triage (1)     impl (1)   done (2)                   │
+│                                                       │
+│   2 active  ╷  1 needs you  ╷  0 blocked  ╷  2 done  │
+│                                                       │
+│  → Triage CLI help improvements (tk:t-3f7a)           │
+│                                                       │
+│  tk, api · last activity 6h ago                        │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
+
+**Zone details:**
+
+**Header zone:**
+- Project title (epic title, or "Standalone tickets")
+- Qualified ID + type badge (only for epics)
+- Priority pips (same as ticket card)
+- Health badge when something's wrong: `⚠ stalled` (no activity > 2d), `⛔ blocked` (all remaining tickets blocked), `✓ on track`
+
+**Distribution zone (stage sparkline):**
+- Horizontal segmented bar where segment width = proportion of tickets at each stage
+- Labels below with counts for stages that have tickets
+- Empty stages collapsed (no width) — you only see where tickets actually are
+- "Done" shows as a solid filled block at the end with count
+- Visual bottleneck detection: if one stage is disproportionately wide, it's a pileup
+
+**Health zone (metrics row):**
+- `N active` — non-done, non-triage tickets
+- `N need you` — inbox items for this project (amber if > 0)
+- `N blocked` — tickets with unresolved deps (red if > 0)
+- `N done` — completed tickets
+- Inline dividers for visual separation
+
+**Actions zone (next steps):**
+- Top 3 next actions from `ProjectSummary.NextActions`, ordered by priority then pipeline position
+- Each action shows: arrow → action description (ticket ID) · waiting time
+- Stale warning if applicable: `⚠ N tickets at stage with no activity for Xd`
+- Actions are clickable — "Review..." opens review modal, "Build AC..." resumes conversation
+
+**Footer zone (muted):**
+- Repos involved (comma-separated badges)
+- Last activity timestamp (relative: "45m ago", "2d ago")
+- Stale projects get amber last-activity text
+
+**Interaction:**
+- Click card → expand to show full pipeline board for this project (the column view with ticket cards)
+- Click a next-action → opens the relevant ticket card or triggers the action directly
+- Hover health badge → tooltip with details ("3 tickets with no activity: t-9d1e, t-6e8f, t-4b2a")
+
+**Visual states (card treatment):**
+- On track: clean white card, green progress bar
+- Needs attention: amber left border, amber "need you" count
+- Stalled: full amber border, `⚠ stalled` badge, dimmed progress bar
+- Blocked: red left border when all remaining tickets are blocked
+- Complete (100%): green progress bar, celebration state (subtle), auto-collapses after 1 day
+
+### 7.1.3 Design system notes
+
+**Color language (consistent across both cards):**
+- **Blue**: feature type, agent activity
+- **Red**: bug type, blocked state, P0 priority
+- **Green**: chore type, ready/advance/done states
+- **Purple**: epic type, conversational/human-input stages
+- **Amber/Yellow**: review pending, needs attention, stale warnings
+- **Gray**: task type, muted metadata, inactive states
+
+**Typography hierarchy:**
+- Title: medium weight, 14px, primary text color
+- Action line: bold, 13px, action-color (matches state)
+- Meta/footer: regular, 11px, muted text color
+- Priority pips: bold, action-colored (`!` = amber, `!!` = orange, `!!!` = red)
+
+**Density controls:**
+The dashboard should offer density settings:
+- **Comfortable**: full cards as shown above (default)
+- **Compact**: collapse progress zone and meta zone into single line:
+  ```
+  ┌──────────────────────────────────────────┐
+  │ ▓ feat  Auth service design        !! P1 │
+  │ ◉ Design review needed · 2h  [Approve]  │
+  │ ○─○─◉─○─○─○─○ · api:t-5a3f · steve · 3d │
+  └──────────────────────────────────────────┘
+  ```
+- **List**: single row per ticket (for very large ticket sets):
+  ```
+  ▓ api:t-5a3f  feat  Auth service design  P1  ◉ review  des  steve  3d
+  ```
 
 **Stage actions (from any view):**
 - "Advance" button: triggers `ticket_advance` via API, shows gate check results
