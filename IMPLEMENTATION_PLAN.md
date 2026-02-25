@@ -35,6 +35,15 @@ const (
     ReviewRejected ReviewState = "rejected"  // review failed, needs rework
 )
 
+type RiskLevel string
+
+const (
+    RiskLow      RiskLevel = "low"       // cosmetic, docs, config
+    RiskNormal   RiskLevel = "normal"    // default — standard gates
+    RiskHigh     RiskLevel = "high"      // auth, payments, data model, breaking API
+    RiskCritical RiskLevel = "critical"  // security, data migration, infrastructure
+)
+
 // ReviewRecord tracks a single review verdict with context.
 // Stored as structured notes in the ticket body (## Review Log section).
 type ReviewRecord struct {
@@ -96,13 +105,32 @@ func Gates(typ TicketType, from Stage) []GateCheck
 
 Gate rules (from REDESIGN.md decisions):
 - `triage → spec/implement`: description exists
-- `spec → design`: acceptance criteria section exists, review=approved
+- `spec → design`: acceptance criteria section exists with ≥1 testable criterion (each AC must be verifiable — not "system should be fast" but "response time < 200ms"), review=approved
 - `design → implement`: design + plan sections exist, review=approved
 - `design → done` (epic): design exists, review=approved
 - `implement → test`: **mandatory** code-review=approved AND impl-review=approved
 - `implement → done` (chore): advisory review surfaced (logged, not blocking)
 - `test → verify`: test results recorded, all pass
 - `verify → done`: review=approved
+
+**Risk-scaled gates** (informed by ThoughtWorks retreat insight: "risk tiering as core engineering discipline"):
+
+Tickets carry a `risk` field (`low`, `normal`, `high`, `critical`) set during triage (default: `normal`). Risk is determined by blast radius, not ticket type — a 5-line feature touching auth is higher risk than a 500-line CSS refactor.
+
+Risk escalates gates:
+- **low** (cosmetic, docs, config): advisory review only at implement, may skip verify
+- **normal** (default): standard gates as above
+- **high** (auth, payments, data model, breaking API): mandatory design-review + 2 code reviewers, mandatory verify
+- **critical** (security, data migration, infrastructure): all `high` gates + human-only implementation (no agent), requires named reviewer (not just "anyone")
+
+Risk indicators that suggest escalation during triage:
+- Touches auth, payment, or PII-handling code
+- Changes public API contracts
+- Modifies database schema
+- Affects >3 repos in workspace
+- Deletes or replaces existing functionality
+
+The `/triage` skill should surface these indicators and recommend a risk level. Human always makes the final call.
 
 ### 1.4 Extended Ticket struct in `pkg/ticket/ticket.go`
 
@@ -119,6 +147,7 @@ type Ticket struct {
     Deps        []string    `yaml:"deps,flow"`
     Links       []string    `yaml:"links,flow"`
     Tags        []string    `yaml:"tags,omitempty,flow"`
+    Risk        RiskLevel   `yaml:"risk,omitempty"`           // NEW: low, normal, high, critical
     ExternalRef string      `yaml:"external-ref,omitempty"`
     Created     time.Time   `yaml:"created"`
     Skipped     []Stage     `yaml:"skipped,omitempty,flow"` // NEW
@@ -653,8 +682,8 @@ Claude Code calls the MCP tools directly — no bash intermediary.
 
 | Skill | Invocation | Stage | Mode | What it does |
 |-------|-----------|-------|------|-------------|
-| `/triage` | Conversational | triage | Interactive | Capture idea, ask clarifying questions, create ticket, set type/priority |
-| `/spec` | Conversational | spec | Interactive | Build acceptance criteria (EARS format), scope definition, context gathering. End with focused decision summary in Notes |
+| `/triage` | Conversational | triage | Interactive | Capture idea, ask clarifying questions, create ticket, set type/priority/risk. Surface risk indicators and recommend risk level |
+| `/spec` | Conversational | spec | Interactive | Build **testable** acceptance criteria (EARS format). Each AC must have a concrete verification method (test command, assertion, or manual check script). Scope definition, context gathering. For high/critical risk: require explicit "what could go wrong" section. End with focused decision summary in Notes |
 | `/design` | Autonomous + review | design | Auto then interactive | Agent writes design + implementation plan. Design-review agent validates. Human reviews and approves |
 | `/implement` | Autonomous | implement | Auto | Agent implements following the design. Impl-review + code-review agents run. Mandatory gates |
 | `/review` | Autonomous | implement | Auto | Trigger review agents on a ticket (standalone, for re-review) |
@@ -1579,7 +1608,57 @@ Sort order in inbox: FAILURES and STALLED sort above BACKLOG and IDLE (they're m
 | `/api/foundry/stats` | GET | Aggregate stats for dashboard widget |
 | `/api/foundry/alerts` | GET | Current queue health alerts |
 
-### 7.5 Learning integration
+### 7.5 Pipeline health metrics (debt detection)
+
+Informed by the ThoughtWorks retreat finding: "AI is an amplifier — if best practices aren't in place, velocity becomes a debt accelerator." The system needs to detect when it's producing debt faster than value.
+
+**Metrics tracked:**
+
+| Metric | What it measures | Debt signal |
+|--------|-----------------|-------------|
+| **Gate rejection rate** | % of advances that fail gate checks | Rising = specs/designs getting sloppier |
+| **Review rejection rate** | % of agent reviews that reject | Rising = implementation quality dropping |
+| **Rework loops** | Times a ticket revisits a stage (design rejected → redesign → re-review) | > 2 loops = spec was underspecified |
+| **Stage dwell time** | Time tickets spend at each stage (7-day rolling avg) | Increasing = bottleneck forming |
+| **First-pass rate** | % of tickets that pass each gate on first attempt | Declining = quality regression |
+| **Verify rejection rate** | % of tickets rejected at verify by human | Rising = agents aren't meeting AC (the AC or the agents need work) |
+| **Time-to-done by risk tier** | Avg pipeline duration segmented by risk level | High-risk tickets moving as fast as low-risk = reviews too lax |
+
+**Dashboard display:**
+
+The dashboard home gets a health strip below the Foundry widget:
+
+```
+┌─ PIPELINE HEALTH (7d) ─────────────────────────────────────────────────┐
+│                                                                         │
+│  First-pass rate   Gate pass rate   Verify pass rate   Avg rework loops │
+│      78% ↓12%         91%               84% ↓6%            1.3         │
+│                                                                         │
+│  ⚠ First-pass rate declining: specs may need more rigor                 │
+│  ⚠ Verify rejection up: agents aren't meeting acceptance criteria       │
+│                                                                         │
+│                                              [View full metrics →]     │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Trend alerts** surface as inbox items when metrics cross thresholds:
+- First-pass rate drops below 70% (7d rolling) → `⚠ QUALITY: First-pass rate declining — specs may need more rigor`
+- Verify rejection rate exceeds 25% → `⚠ QUALITY: Human verify rejecting 1 in 4 tickets — agents may be drifting from AC`
+- Rework loops average > 2.0 → `⚠ QUALITY: Excessive rework — consider improving spec completeness`
+- Stage dwell time increases > 50% week-over-week → `⚠ BOTTLENECK: Tickets piling up at {stage}`
+
+These alerts are the "funhouse mirror" — they reflect the quality of your specs, reviews, and agent definitions back at you. If the numbers are going the wrong direction, the system is accelerating debt, not value.
+
+**API:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/metrics` | GET | Pipeline health metrics (filterable by time range, project, risk tier) |
+| `/api/metrics/trends` | GET | Week-over-week trend data |
+| `/api/metrics/alerts` | GET | Active quality alerts |
+
+### 7.6 Learning integration
 
 - Session summaries in `data/sessions/` auto-link to tickets via `conversations` field
 - Pattern detection creates tickets with `tag: pattern-action`
