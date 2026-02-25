@@ -1251,7 +1251,335 @@ New/modified endpoints:
 
 The dashboard server starts `tk serve --workspace ...` and communicates via MCP. All reads go through `ticket_inbox`, `ticket_next`, `ticket_dashboard`. All writes go through `ticket_advance`, `ticket_review`, etc. The workspace MCP server handles routing writes to the correct repo.
 
-### 7.4 Learning integration
+### 7.4 The Foundry (agents page)
+
+A dedicated page for managing and monitoring the agent fleet. The forge creates the tools; **the Foundry** is where they're put to work.
+
+**URL:** `/foundry`
+**API:** `/api/foundry/*`
+
+#### 7.4.1 Data model
+
+```go
+// AgentPool defines the concurrency configuration for an agent type.
+type AgentPool struct {
+    AgentType   string `json:"agent_type"`   // e.g. "design-reviewer"
+    MaxWorkers  int    `json:"max_workers"`  // max concurrent instances
+    Active      int    `json:"active"`       // currently running
+    Queued      int    `json:"queued"`       // waiting for a worker
+    Model       string `json:"model"`        // default model (opus, sonnet, haiku)
+    Enabled     bool   `json:"enabled"`      // can be paused without changing pool size
+}
+
+// AgentRun represents a single agent execution.
+type AgentRun struct {
+    RunID       string        `json:"run_id"`
+    AgentType   string        `json:"agent_type"`
+    TicketID    string        `json:"ticket_id"`
+    TicketTitle string        `json:"ticket_title"`
+    Project     string        `json:"project,omitempty"`   // parent epic title
+    Status      RunStatus     `json:"status"`              // queued | running | completed | failed | cancelled
+    Result      *RunResult    `json:"result,omitempty"`    // only when completed
+    QueuedAt    time.Time     `json:"queued_at"`
+    StartedAt   *time.Time    `json:"started_at,omitempty"`
+    CompletedAt *time.Time    `json:"completed_at,omitempty"`
+    Duration    *Duration     `json:"duration,omitempty"`
+    Model       string        `json:"model"`
+}
+
+// RunResult holds the outcome of a completed agent run.
+type RunResult struct {
+    Verdict     string   `json:"verdict"`      // approved | rejected | passed | failed | completed
+    Summary     string   `json:"summary"`      // one-line summary of what the agent did
+    Comments    []string `json:"comments"`      // detailed feedback items
+    TokensUsed  int      `json:"tokens_used"`   // total tokens consumed
+}
+
+// FoundryStats holds aggregate stats for the dashboard summary.
+type FoundryStats struct {
+    TotalActive   int              `json:"total_active"`
+    TotalQueued   int              `json:"total_queued"`
+    CompletedToday int             `json:"completed_today"`
+    FailedToday   int              `json:"failed_today"`
+    AvgDuration   map[string]Duration `json:"avg_duration"`  // per agent type
+    Pools         []AgentPool      `json:"pools"`
+    Alerts        []FoundryAlert   `json:"alerts"`
+}
+
+// FoundryAlert is a queue health notification.
+type FoundryAlert struct {
+    Type      AlertType `json:"type"`       // backlog | idle | failure_spike | stalled
+    AgentType string    `json:"agent_type"`
+    Message   string    `json:"message"`
+    Severity  string    `json:"severity"`   // info | warning | critical
+}
+```
+
+Alert types:
+- **backlog**: queue depth > 2× pool size for > 10 minutes. Something's piling up.
+- **idle**: pool has workers but queue has been empty for > 1 hour while tickets are waiting at stages this agent handles. Work exists but isn't being dispatched.
+- **failure_spike**: > 50% failure rate in last 10 runs. Agent may be misconfigured or hitting a systemic issue.
+- **stalled**: an agent run has been active for > 2× its type's average duration. Might be stuck.
+
+#### 7.4.2 Page layout
+
+The Foundry page has three zones: fleet overview (top), active work (middle), queue + history (bottom tabs).
+
+**Fleet Overview — the control panel:**
+
+```
+┌─ THE FOUNDRY ──────────────────────────────────────────────────────────┐
+│                                                                        │
+│  ┌─ spec-builder ──────┐  ┌─ design-reviewer ─────┐  ┌─ impl-reviewer │
+│  │                     │  │                        │  │                │
+│  │  ██░░  1/2 active   │  │  ░░░░  0/2 active     │  │  █░░░  1/3    │
+│  │  0 queued           │  │  3 queued  ⚠ backlog   │  │  0 queued     │
+│  │  avg 8m · opus      │  │  avg 4m · sonnet       │  │  avg 12m ·    │
+│  │                     │  │                        │  │  opus         │
+│  │  [Pause] [Scale ▾]  │  │  [Pause] [Scale ▾]    │  │  [Pause]      │
+│  └─────────────────────┘  └────────────────────────┘  └───────────────│
+│                                                                        │
+│  ┌─ code-reviewer ─────┐  ┌─ test-runner ──────────┐                   │
+│  │                     │  │                        │                   │
+│  │  █░░░  1/3 active   │  │  ██░░  2/4 active     │                   │
+│  │  0 queued           │  │  1 queued              │                   │
+│  │  avg 5m · sonnet    │  │  avg 3m · sonnet       │                   │
+│  │                     │  │                        │                   │
+│  │  [Pause] [Scale ▾]  │  │  [Pause] [Scale ▾]    │                   │
+│  └─────────────────────┘  └────────────────────────┘                   │
+│                                                                        │
+│  Total: 5 active · 4 queued · 23 completed today · 1 failed           │
+│  ⚠ design-reviewer backlog: 3 reviews waiting, avg wait 18m           │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+Each **pool card** shows:
+- Agent type name as header
+- Utilization bar: filled segments = active workers, empty = available capacity
+- `N/M active` — current / max workers
+- Queue depth (amber if > 0, red with `⚠ backlog` if > 2× pool)
+- Average run duration + model
+- Controls: Pause (stops dispatching, lets active runs finish), Scale (dropdown to change max workers 1-8)
+
+**Alert banner** at the bottom of fleet overview when any queue health issue exists.
+
+**Active Work — live agent monitor:**
+
+```
+┌─ ACTIVE (5 runs) ──────────────────────────────────────────────────────┐
+│                                                                         │
+│  ⟳ impl-reviewer   api:t-8b2c  Payment error handling                  │
+│    running 3m · opus · Acme project                                     │
+│    Checking acceptance criteria (4/7 checks done)                       │
+│    ████████████████░░░░░░░░░░                                           │
+│                                                              [Cancel]   │
+│                                                                         │
+│  ⟳ spec-builder    webapp:t-9d1e  User onboarding flow                  │
+│    running 6m · opus · Portal v2                                        │
+│    Building EARS acceptance criteria                                     │
+│    Progress not available for this agent type                            │
+│                                                              [Cancel]   │
+│                                                                         │
+│  ⟳ test-runner     api:t-2c4b  Search performance fix                   │
+│    running 1m · sonnet · Acme project                                   │
+│    Running test suite (12 tests discovered)                              │
+│    ██░░░░░░░░░░░░░░░░░░░░░░░░                                          │
+│                                                              [Cancel]   │
+│                                                                         │
+│  ⟳ test-runner     tk:t-4b2a  CLI help formatting                       │
+│    running 2m · sonnet · standalone                                     │
+│    Running test suite                                                    │
+│    ████████████████████████████████████████                              │
+│                                                              [Cancel]   │
+│                                                                         │
+│  ⟳ code-reviewer   api:t-7c3d  Cache invalidation                       │
+│    running 4m · sonnet · Acme project                                   │
+│    Reviewing diff (428 lines changed)                                    │
+│                                                              [Cancel]   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Each **active run row** shows:
+- Spinning icon `⟳` + agent type (color-coded by type)
+- Qualified ticket ID + ticket title
+- Running duration + model + project
+- Progress line: what the agent is currently doing (streamed from agent output, best-effort)
+- Progress bar when available (e.g. test-runner knows total/passed, impl-reviewer knows checks completed)
+- Cancel button (stops the run, returns ticket to previous state)
+
+Active runs update in real-time via SSE. The progress line and bar animate as the agent works.
+
+Sort order: longest-running first (potential stalls surface to top).
+
+**Queue + History (bottom, tabbed):**
+
+```
+┌─ [Queue (4)] [History] [Failures] ─────────────────────────────────────┐
+│                                                                         │
+│  Queue tab:                                                             │
+│                                                                         │
+│  1. design-reviewer  api:t-5a3f  Auth service design       P1  18m     │
+│     waiting for worker · Acme project                      [Cancel]    │
+│                                                                         │
+│  2. design-reviewer  api:t-3c7d  Notification service      P2  12m     │
+│     waiting for worker · Acme project                      [Cancel]    │
+│                                                                         │
+│  3. design-reviewer  webapp:t-1b4e  Settings page redesign P3   8m     │
+│     waiting for worker · Portal v2                         [Cancel]    │
+│                                                                         │
+│  4. test-runner      tk:t-6f2a  Tag filtering              P2   2m     │
+│     waiting for worker · standalone                        [Cancel]    │
+│                                                                         │
+│  Queue sorted by: priority, then wait time (longest first)             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─ [Queue (4)] [History] [Failures] ─────────────────────────────────────┐
+│                                                                         │
+│  History tab (last 24h):                                                │
+│                                                                         │
+│  ✓ code-reviewer    api:t-2c4b  Search perf fix     approved    5m ago │
+│    4m · sonnet · "Clean implementation, no issues"                      │
+│                                                                         │
+│  ✓ impl-reviewer   api:t-2c4b  Search perf fix     approved    9m ago │
+│    11m · opus · "All 5 acceptance criteria covered"                     │
+│                                                                         │
+│  ✗ design-reviewer api:t-9f1b  Auth refactor       rejected   22m ago │
+│    3m · sonnet · "Referenced file pkg/auth/v2.go doesn't exist"         │
+│                                                                         │
+│  ✓ test-runner     api:t-8b2c  Payment errors      passed     1h ago  │
+│    2m · sonnet · "47/47 tests pass"                                     │
+│                                                                         │
+│  ... (paginated, 50 per page)                                           │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─ [Queue (4)] [History] [Failures] ─────────────────────────────────────┐
+│                                                                         │
+│  Failures tab (filtered view of history):                               │
+│                                                                         │
+│  ✗ design-reviewer api:t-9f1b  Auth refactor       rejected   22m ago │
+│    3m · sonnet · "Referenced file pkg/auth/v2.go doesn't exist"         │
+│    [View full output] [Retry] [Reassign to human]                       │
+│                                                                         │
+│  ✗ test-runner     tk:t-3f7a  ID generation        failed     3h ago  │
+│    8m · sonnet · "2/12 tests failing: TestGenerateID, TestIDCollision"  │
+│    [View full output] [Retry] [Reassign to human]                       │
+│                                                                         │
+│  ✗ impl-reviewer   webapp:t-1b4e  Settings page    rejected    5h ago │
+│    14m · opus · "Missing AC #3: accessibility requirements not met"      │
+│    [View full output] [Retry] [Reassign to human]                       │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Queue tab:**
+- All queued runs, sorted by priority then wait time
+- Shows: position, agent type, ticket, priority, wait duration
+- Cancel button to remove from queue
+- Drag to reorder (manual priority override)
+
+**History tab:**
+- Completed runs from last 24h (configurable)
+- Shows: verdict icon (✓/✗), agent type, ticket, verdict, completion time
+- Second line: duration, model, one-line summary
+- Click to expand full agent output
+
+**Failures tab:**
+- Filtered view of history showing only rejections and failures
+- Additional actions: Retry (re-queue), Reassign to human (creates inbox item), View full output
+- This is the triage view for agent problems
+
+#### 7.4.3 Dashboard summary widget
+
+The Foundry gets a summary card on the dashboard home, below the project cards:
+
+```
+┌─ FOUNDRY ──────────────────────────────────────────────────────────────┐
+│                                                                         │
+│  5 agents active  ·  4 queued  ·  23 completed today  ·  1 failed     │
+│                                                                         │
+│  spec-builder  █░  1/2    design-reviewer ░░  0/2 ⚠3   impl-reviewer  │
+│  code-reviewer █░  1/3    test-runner     ██  2/4                      │
+│                                                                         │
+│  ⚠ design-reviewer: 3 reviews queued, avg wait 18m                     │
+│                                                                         │
+│                                                    [Open Foundry →]    │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Shows:
+- Aggregate stats: active, queued, completed today, failed today
+- Mini pool bars: one per agent type, utilization bar + queue indicator
+- Alert summary if any queue health issues
+- Link to full Foundry page
+
+This widget is always visible on the dashboard. It collapses to a single stats line in compact mode:
+```
+⚒ Foundry: 5 active · 4 queued · 23 done today · ⚠ design-reviewer backlog
+```
+
+#### 7.4.4 Inbox notifications for queue health
+
+Queue health issues surface as inbox items so they don't get missed:
+
+```
+┌─ INBOX ────────────────────────────────────────────────────────────────┐
+│                                                                         │
+│  ...existing inbox items...                                             │
+│                                                                         │
+│  ⚠ BACKLOG  design-reviewer                                            │
+│    3 reviews queued · avg wait 18m · pool: 0/2 active                  │
+│    [Scale up pool] [View queue] [Dismiss for 1h]                       │
+│                                                                         │
+│  ⚠ IDLE     impl-reviewer                                              │
+│    Pool has 3 workers but queue empty · 4 tickets at implement stage   │
+│    Tickets may need review dispatch                                     │
+│    [Dispatch reviews] [View tickets] [Dismiss]                         │
+│                                                                         │
+│  ⚠ STALLED  test-runner                                                │
+│    Run on tk:t-3f7a active for 24m (avg is 3m)                         │
+│    [View run] [Cancel run] [Dismiss]                                   │
+│                                                                         │
+│  ⚠ FAILURES code-reviewer                                              │
+│    3/5 recent runs rejected · possible systemic issue                  │
+│    [View failures] [Pause pool] [Dismiss]                              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Inbox notification types:
+
+- **BACKLOG** (amber): Queue depth > 2× pool for > 10 min. Actions: scale up, view queue, snooze.
+- **IDLE** (blue/info): Workers available but nothing queued while relevant tickets exist. This means the orchestrator isn't dispatching — either a config issue or tickets aren't reaching the right stages. Actions: dispatch, view tickets.
+- **STALLED** (amber): A run exceeds 2× average duration. Actions: view run, cancel.
+- **FAILURES** (red): > 50% failure rate in recent runs. Actions: view failures, pause pool (stop dispatching until investigated).
+
+Notifications are auto-generated by the orchestrator's health check loop (runs every 60 seconds). They auto-dismiss when the condition resolves (e.g., backlog clears). Manual dismiss snoozes for the specified duration.
+
+Sort order in inbox: FAILURES and STALLED sort above BACKLOG and IDLE (they're more urgent). All foundry alerts sort below human-action items (reviews, input, verify) since they're operational, not work items.
+
+#### 7.4.5 API endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/foundry` | GET | Full foundry state: pools, active runs, queue, stats |
+| `/api/foundry/pools` | GET | Pool configurations only |
+| `/api/foundry/pools/:type` | PATCH | Update pool config (max_workers, model, enabled) |
+| `/api/foundry/active` | GET | Active runs with progress |
+| `/api/foundry/active/events` | GET (SSE) | Stream active run updates |
+| `/api/foundry/queue` | GET | Queued runs |
+| `/api/foundry/queue/:runId` | DELETE | Cancel queued run |
+| `/api/foundry/queue/reorder` | POST | Manual priority override |
+| `/api/foundry/history` | GET | Completed runs (paginated, filterable) |
+| `/api/foundry/history/:runId` | GET | Full run detail with agent output |
+| `/api/foundry/stats` | GET | Aggregate stats for dashboard widget |
+| `/api/foundry/alerts` | GET | Current queue health alerts |
+
+### 7.5 Learning integration
 
 - Session summaries in `data/sessions/` auto-link to tickets via `conversations` field
 - Pattern detection creates tickets with `tag: pattern-action`
