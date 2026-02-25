@@ -224,6 +224,7 @@ type InboxItem struct {
     Action     ActionKind
     Detail     string      // human-readable: "design review needed", "spec: build acceptance criteria"
     Since      time.Time   // when this item entered the inbox (stage change timestamp)
+    Repo       string      // which repo this ticket lives in (workspace mode, "" for single-repo)
     Project    string      // parent epic title (or "" if standalone)
     ProjectID  string      // parent epic ID (or "")
     Priority   int         // inherited: max(own priority, parent priority)
@@ -276,9 +277,11 @@ func IsConversational(stage Stage) bool
 
 ```go
 // ProjectSummary aggregates ticket state across a project (epic + children).
+// In workspace mode, a project may span multiple repos.
 type ProjectSummary struct {
     Epic          *Ticket       // the parent epic (nil for standalone tickets)
-    Tickets       []*Ticket     // all tickets in this project
+    Tickets       []*Ticket     // all tickets in this project (may span repos)
+    Repos         []string      // which repos contribute tickets to this project
     InboxCount    int           // how many items need human attention
     BlockedCount  int           // how many are blocked
     ActiveCount   int           // how many are in progress (not triage, not done)
@@ -446,7 +449,94 @@ Stage skipping:
 - Add backward compat tests (old commands still work with warnings)
 - Test MCP tools via Go test harness (call tool handlers directly)
 
-**Testable checkpoint:** `tk advance`, `tk review`, `tk pipeline` work from CLI. MCP tools work via `tk serve`. `tk migrate --dry-run` shows what would change. Full `test-suite.sh` passes. Old commands still work with deprecation warnings.
+### 2.8 Workspace mode (multi-repo)
+
+Tickets stay in their repos — `tk/.tickets/`, `webapp/.tickets/`, `api/.tickets/`. No central store, no sync. Workspace mode lets `tk` query across all of them through a single CLI or MCP connection.
+
+**Config file:** `~/.config/tk/workspace.yaml` (or `forge/.tk-workspace` for project-scoped):
+
+```yaml
+repos:
+  - path: ~/code/tk
+    name: tk
+  - path: ~/code/webapp
+    name: webapp
+  - path: ~/code/api
+    name: api
+```
+
+**How it works:**
+
+```go
+// pkg/ticket/workspace.go
+
+// Workspace holds multiple FileStores, one per repo.
+type Workspace struct {
+    Repos []RepoStore
+}
+
+type RepoStore struct {
+    Name  string      // short name for qualification: "tk", "webapp"
+    Store *FileStore  // points to that repo's .tickets/ dir
+}
+
+// List returns tickets from all repos. Each ticket's ID is qualified
+// with repo name: "tk:t-5a3f", "webapp:t-8b2c".
+func (w *Workspace) List() ([]*Ticket, error)
+
+// Get resolves a qualified or unqualified ID across all repos.
+// Unqualified IDs work if unambiguous across repos.
+func (w *Workspace) Get(id string) (*Ticket, error)
+
+// Inbox, Projects, etc. all aggregate across repos.
+func (w *Workspace) Inbox() ([]InboxItem, error)
+func (w *Workspace) Projects() ([]ProjectSummary, error)
+```
+
+**Qualified IDs:** When displaying tickets from multiple repos, IDs get a repo prefix: `tk:t-5a3f`. When there's no ambiguity, the bare ID `t-5a3f` still works. Writes route to the correct repo's `.tickets/` directory based on the qualified ID.
+
+**CLI usage:**
+```bash
+# Single-repo (default, unchanged behavior):
+cd ~/code/tk && tk inbox         # reads only tk/.tickets/
+
+# Workspace mode:
+tk inbox --workspace ~/.config/tk/workspace.yaml   # reads all repos
+tk inbox -w                                         # uses default workspace config
+
+# Or set env var:
+export TK_WORKSPACE=~/.config/tk/workspace.yaml
+tk inbox                                            # reads all repos
+```
+
+**MCP usage:**
+```bash
+# Single-repo MCP server (unchanged):
+tk serve                            # serves current repo's .tickets/
+
+# Workspace MCP server (one connection, all repos):
+tk serve --workspace ~/.config/tk/workspace.yaml
+
+# The dashboard connects to this one server and sees everything.
+```
+
+**Cross-repo dependencies:** A ticket in `webapp` can depend on a ticket in `tk`:
+```yaml
+deps: [tk:t-5a3f]
+```
+The workspace resolves these across repos. `ReadyTickets()` and `BlockedTickets()` work across repo boundaries.
+
+**Implementation in `pkg/ticket/`:**
+- `workspace.go`: `Workspace` struct, multi-repo `List`/`Get`/`Inbox`/`Projects`
+- All existing functions that take `*FileStore` gain workspace-aware variants that take `*Workspace` (or use an interface that both implement)
+- `StoreInterface` interface: `List()`, `Get()`, `Update()`, `Create()`, `Delete()`, `Resolve()` — implemented by both `FileStore` (single repo) and `Workspace` (multi-repo)
+
+**In `internal/mcp/mcp.go`:**
+- `NewServer` accepts either `*FileStore` or `*Workspace`
+- When in workspace mode, `ticket_list` returns qualified IDs, `ticket_inbox` aggregates across repos
+- `ticket_create` requires a `repo` parameter in workspace mode to know which repo gets the ticket
+
+**Testable checkpoint:** `tk inbox -w` shows items from multiple repos. `tk serve --workspace ...` exposes all repos via one MCP connection. Cross-repo deps resolve correctly. Qualified IDs work in all commands.
 
 ---
 
@@ -699,37 +789,37 @@ The dashboard home page has two primary panels. Everything else is secondary nav
 The single view of "what needs me right now." Powered by `ticket_inbox` MCP tool / `GET /api/inbox`.
 
 ```
-┌─ INBOX (7 items) ──────────────────────────────────────────────┐
-│                                                                 │
-│ ● REVIEW  t-5a3f  Auth service design       P1  Acme project  │
-│   Design review needed · waiting 2h                             │
-│   [Approve] [Reject] [Open]                                    │
-│                                                                 │
-│ ● REVIEW  t-8b2c  Payment error handling    P0  Acme project  │
-│   Code review needed · waiting 45m                              │
-│   [Approve] [Reject] [Open]                                    │
-│                                                                 │
-│ ● INPUT   t-9d1e  User onboarding flow      P2  Portal v2     │
-│   Spec stage: build acceptance criteria                         │
-│   [Resume conversation] [Open]                                  │
-│                                                                 │
-│ ● INPUT   t-3f7a  CLI help improvements     P3  (standalone)  │
-│   Triage stage: needs type and priority                         │
-│   [Resume conversation] [Open]                                  │
-│                                                                 │
-│ ● VERIFY  t-2c4b  Search performance fix    P1  Acme project  │
-│   Verify stage: walk through acceptance criteria                │
-│   [Start verification] [Open]                                   │
-│                                                                 │
-│ ● DECIDE  t-6e8f  API rate limiting         P2  Portal v2     │
-│   Agent rejected design — review needed                         │
-│   [View agent feedback] [Override] [Open]                       │
-│                                                                 │
-│ ● DECIDE  t-1a9c  Cache invalidation        P2  Acme project  │
-│   Advisory gate: test coverage below 80%                        │
-│   [Advance anyway] [Open]                                       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─ INBOX (7 items) ──────────────────────────────────────────────────────┐
+│                                                                         │
+│ ● REVIEW  api:t-5a3f  Auth service design      P1  Acme  · api repo   │
+│   Design review needed · waiting 2h                                     │
+│   [Approve] [Reject] [Open]                                            │
+│                                                                         │
+│ ● REVIEW  api:t-8b2c  Payment error handling   P0  Acme  · api repo   │
+│   Code review needed · waiting 45m                                      │
+│   [Approve] [Reject] [Open]                                            │
+│                                                                         │
+│ ● INPUT   webapp:t-9d1e  User onboarding flow  P2  Portal · webapp    │
+│   Spec stage: build acceptance criteria                                 │
+│   [Resume conversation] [Open]                                          │
+│                                                                         │
+│ ● INPUT   tk:t-3f7a  CLI help improvements     P3  (standalone) · tk  │
+│   Triage stage: needs type and priority                                 │
+│   [Resume conversation] [Open]                                          │
+│                                                                         │
+│ ● VERIFY  api:t-2c4b  Search performance fix   P1  Acme  · api repo   │
+│   Verify stage: walk through acceptance criteria                        │
+│   [Start verification] [Open]                                           │
+│                                                                         │
+│ ● DECIDE  webapp:t-6e8f  API rate limiting      P2  Portal · webapp   │
+│   Agent rejected design — review needed                                 │
+│   [View agent feedback] [Override] [Open]                               │
+│                                                                         │
+│ ● DECIDE  api:t-1a9c  Cache invalidation        P2  Acme  · api repo  │
+│   Advisory gate: test coverage below 80%                                │
+│   [Advance anyway] [Open]                                               │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 Inbox item types and their actions:
@@ -740,31 +830,31 @@ Inbox item types and their actions:
 
 Sort order: Priority first, then waiting time (longest-waiting first within same priority). Critical (P0) items always surface at top regardless of age.
 
-Filter controls: by project (epic), by action type, by assignee.
+Filter controls: by project (epic), by repo, by action type, by assignee.
 
 **What's Next (right panel / bottom on mobile):**
 
 Per-project consolidated view of active work. Powered by `ticket_next` MCP tool / `GET /api/projects`.
 
 ```
-┌─ ACTIVE PROJECTS ──────────────────────────────────────────────┐
-│                                                                 │
-│ ▼ Acme project (t-0001)                    P1  ████████░░ 78% │
-│   12 tickets · 3 in inbox · 1 blocked                          │
-│   Next: Review auth service design (t-5a3f)                    │
-│         Review payment error handling (t-8b2c)                  │
-│         Unblock: t-7c3d waiting on t-5a3f                      │
-│                                                                 │
-│ ▼ Portal v2 (t-0042)                       P2  ████░░░░░░ 35% │
-│   8 tickets · 2 in inbox · 0 blocked                           │
-│   Next: Build AC for onboarding flow (t-9d1e)                  │
-│         Decide on API rate limiting design (t-6e8f)             │
-│                                                                 │
-│ ▼ Standalone tickets                            ██████░░░░ 60% │
-│   4 tickets · 1 in inbox · 0 blocked                           │
-│   Next: Triage CLI help improvements (t-3f7a)                  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─ ACTIVE PROJECTS ───────────────────────────────────────────────────┐
+│                                                                      │
+│ ▼ Acme project (api:t-0001)                  P1  ████████░░ 78%    │
+│   12 tickets across api, webapp · 3 in inbox · 1 blocked            │
+│   Next: Review auth service design (api:t-5a3f)                     │
+│         Review payment error handling (api:t-8b2c)                   │
+│         Unblock: api:t-7c3d waiting on api:t-5a3f                   │
+│                                                                      │
+│ ▼ Portal v2 (webapp:t-0042)                  P2  ████░░░░░░ 35%    │
+│   8 tickets in webapp · 2 in inbox · 0 blocked                      │
+│   Next: Build AC for onboarding flow (webapp:t-9d1e)                │
+│         Decide on API rate limiting design (webapp:t-6e8f)           │
+│                                                                      │
+│ ▼ Standalone tickets                              ██████░░░░ 60%    │
+│   4 tickets across tk, api · 1 in inbox · 0 blocked                 │
+│   Next: Triage CLI help improvements (tk:t-3f7a)                    │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 Project summary shows:
@@ -857,7 +947,7 @@ New/modified endpoints:
 | `/api/orchestrate/:runId` | GET | Check orchestration status |
 | `/api/orchestrate/:runId/events` | GET (SSE) | Stream orchestration progress |
 
-All ticket-reading endpoints call `ticket_inbox`, `ticket_next`, `ticket_dashboard` MCP tools (or `pkg/ticket` directly if forge is Go-based). All ticket-mutating endpoints delegate to `ticket_advance`, `ticket_review`, etc.
+The dashboard server starts `tk serve --workspace ...` and communicates via MCP. All reads go through `ticket_inbox`, `ticket_next`, `ticket_dashboard`. All writes go through `ticket_advance`, `ticket_review`, etc. The workspace MCP server handles routing writes to the correct repo.
 
 ### 7.4 Learning integration
 
