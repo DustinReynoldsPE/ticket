@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/EnderRealm/ticket/pkg/ticket"
 	"github.com/spf13/cobra"
 )
@@ -30,13 +27,9 @@ func runBlocked(cmd *cobra.Command, args []string) error {
 	tickets = ticket.Filter(tickets, opts)
 	ticket.SortByPriorityID(tickets)
 
+	printHeader()
 	for _, t := range tickets {
-		blocking := ticket.BlockingDeps(store, t)
-		depStr := ""
-		if len(blocking) > 0 {
-			depStr = " <- [" + strings.Join(blocking, ", ") + "]"
-		}
-		fmt.Printf("%-8s [P%d][%s] - %s%s\n", t.ID, t.Priority, t.Status, t.Title, depStr)
+		printRow(t)
 	}
 	return nil
 }

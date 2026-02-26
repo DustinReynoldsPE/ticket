@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -65,9 +64,9 @@ func runClosed(cmd *cobra.Command, args []string) error {
 		mt = mt[:limit]
 	}
 
+	printHeader()
 	for _, m := range mt {
-		t := m.ticket
-		fmt.Printf("%-8s [%s] - %s\n", t.ID, t.Status, t.Title)
+		printRow(m.ticket)
 	}
 	return nil
 }

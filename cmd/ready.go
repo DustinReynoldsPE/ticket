@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/EnderRealm/ticket/pkg/ticket"
 	"github.com/spf13/cobra"
 )
@@ -40,8 +38,9 @@ func runReady(cmd *cobra.Command, args []string) error {
 	tickets = ticket.Filter(tickets, opts)
 	ticket.SortByPriorityID(tickets)
 
+	printHeader()
 	for _, t := range tickets {
-		fmt.Printf("%-8s [P%d][%s] - %s\n", t.ID, t.Priority, t.Status, t.Title)
+		printRow(t)
 	}
 	return nil
 }
