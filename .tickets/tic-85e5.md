@@ -1,6 +1,6 @@
 ---
 id: tic-85e5
-status: open
+status: closed
 deps: [tic-e581]
 links: []
 created: 2026-02-26T04:33:27Z
@@ -11,6 +11,8 @@ parent: tic-46c0
 tags: [redesign, pipeline]
 ---
 # Update stage propagation logic
+
+
 
 
 

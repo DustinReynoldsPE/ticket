@@ -33,6 +33,12 @@ func Parse(r io.Reader) (*Ticket, error) {
 	if t.Tags == nil {
 		t.Tags = []string{}
 	}
+	if t.Skipped == nil {
+		t.Skipped = []Stage{}
+	}
+	if t.Conversations == nil {
+		t.Conversations = []string{}
+	}
 
 	parseBody(&t, body)
 	return &t, nil
@@ -45,7 +51,21 @@ func Serialize(t *Ticket) ([]byte, error) {
 
 	buf.WriteString("---\n")
 	writeField(&buf, "id", t.ID)
-	writeField(&buf, "status", string(t.Status))
+
+	// Write stage if present, fall back to status for legacy tickets.
+	if t.Stage != "" {
+		writeField(&buf, "stage", string(t.Stage))
+	}
+	if t.Status != "" {
+		writeField(&buf, "status", string(t.Status))
+	}
+	if t.Review != ReviewNone {
+		writeField(&buf, "review", string(t.Review))
+	}
+	if t.Risk != "" {
+		writeField(&buf, "risk", string(t.Risk))
+	}
+
 	writeFlowArray(&buf, "deps", t.Deps)
 	writeFlowArray(&buf, "links", t.Links)
 	writeField(&buf, "created", t.Created.UTC().Format(time.RFC3339))
@@ -63,6 +83,16 @@ func Serialize(t *Ticket) ([]byte, error) {
 	if len(t.Tags) > 0 {
 		writeFlowArray(&buf, "tags", t.Tags)
 	}
+	if len(t.Skipped) > 0 {
+		strs := make([]string, len(t.Skipped))
+		for i, s := range t.Skipped {
+			strs[i] = string(s)
+		}
+		writeFlowArray(&buf, "skipped", strs)
+	}
+	if len(t.Conversations) > 0 {
+		writeFlowArray(&buf, "conversations", t.Conversations)
+	}
 	buf.WriteString("---\n")
 
 	buf.WriteString("# " + t.Title + "\n")
@@ -75,8 +105,22 @@ func Serialize(t *Ticket) ([]byte, error) {
 		}
 	}
 
+	if len(t.Reviews) > 0 {
+		if !strings.Contains(t.Body, "## Review Log") {
+			buf.WriteString("\n## Review Log\n")
+		}
+		for _, r := range t.Reviews {
+			buf.WriteString("\n**" + r.Timestamp.UTC().Format(time.RFC3339) + " [" + r.Reviewer + "]**\n")
+			verdict := strings.ToUpper(r.Verdict)
+			if r.Comment != "" {
+				buf.WriteString(verdict + " — " + r.Comment + "\n")
+			} else {
+				buf.WriteString(verdict + "\n")
+			}
+		}
+	}
+
 	if len(t.Notes) > 0 {
-		// If body doesn't already contain a Notes section, add the header.
 		if !strings.Contains(t.Body, "## Notes") {
 			buf.WriteString("\n## Notes\n")
 		}
@@ -142,27 +186,54 @@ func parseBody(t *Ticket, body string) {
 		return
 	}
 
-	// Everything after the title line is the body. Split off Notes section.
+	// Everything after the title line is the body.
+	// Split off Review Log and Notes sections (both are parsed into struct fields).
 	rest := strings.Join(lines[titleIdx+1:], "\n")
 
+	// Extract ## Review Log section.
+	reviewIdx := strings.Index(rest, "\n## Review Log\n")
+	if reviewIdx == -1 && strings.HasPrefix(rest, "## Review Log\n") {
+		reviewIdx = 0
+	}
+
+	// Extract ## Notes section.
 	notesIdx := strings.Index(rest, "\n## Notes\n")
 	if notesIdx == -1 && strings.HasPrefix(rest, "## Notes\n") {
 		notesIdx = 0
 	}
 
-	if notesIdx >= 0 {
-		t.Body = rest[:notesIdx]
-		notesSection := rest[notesIdx+len("\n## Notes\n"):]
-		if notesIdx == 0 {
-			notesSection = rest[len("## Notes\n"):]
-		}
-		t.Notes = parseNotes(notesSection)
-		// Keep notes in body for round-trip fidelity — Serialize handles
-		// notes from the Notes field, so strip them from Body.
-		t.Body = strings.TrimRight(t.Body, "\n") + "\n"
-	} else {
-		t.Body = strings.TrimRight(rest, "\n") + "\n"
+	// Determine body end: the earliest of review log or notes.
+	bodyEnd := len(rest)
+	if reviewIdx >= 0 && reviewIdx < bodyEnd {
+		bodyEnd = reviewIdx
 	}
+	if notesIdx >= 0 && notesIdx < bodyEnd {
+		bodyEnd = notesIdx
+	}
+	t.Body = rest[:bodyEnd]
+
+	if reviewIdx >= 0 {
+		// Find where the review section ends (at next ## or end of rest).
+		sectionStart := reviewIdx + len("\n## Review Log\n")
+		if reviewIdx == 0 {
+			sectionStart = len("## Review Log\n")
+		}
+		sectionEnd := len(rest)
+		if notesIdx > reviewIdx {
+			sectionEnd = notesIdx
+		}
+		t.Reviews = parseReviewLog(rest[sectionStart:sectionEnd])
+	}
+
+	if notesIdx >= 0 {
+		sectionStart := notesIdx + len("\n## Notes\n")
+		if notesIdx == 0 {
+			sectionStart = len("## Notes\n")
+		}
+		t.Notes = parseNotes(rest[sectionStart:])
+	}
+
+	t.Body = strings.TrimRight(t.Body, "\n") + "\n"
 }
 
 // parseNotes extracts timestamped notes from the notes section.
@@ -202,6 +273,57 @@ func parseNotes(section string) []Note {
 		notes = append(notes, *current)
 	}
 	return notes
+}
+
+// parseReviewLog extracts ReviewRecord structs from the Review Log section.
+// Format:
+//
+//	**2026-02-25T12:00:00Z [design-review-agent]**
+//	APPROVED — All file paths verified.
+func parseReviewLog(section string) []ReviewRecord {
+	var reviews []ReviewRecord
+	lines := strings.Split(section, "\n")
+	var current *ReviewRecord
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "**") && strings.HasSuffix(line, "**") {
+			// Flush previous record.
+			if current != nil {
+				reviews = append(reviews, *current)
+			}
+			inner := strings.Trim(line, "*")
+			// Parse "2026-02-25T12:00:00Z [reviewer-name]"
+			bracketOpen := strings.Index(inner, "[")
+			bracketClose := strings.Index(inner, "]")
+			if bracketOpen < 0 || bracketClose < 0 {
+				current = nil
+				continue
+			}
+			tsStr := strings.TrimSpace(inner[:bracketOpen])
+			reviewer := inner[bracketOpen+1 : bracketClose]
+			ts, err := time.Parse(time.RFC3339, tsStr)
+			if err != nil {
+				current = nil
+				continue
+			}
+			current = &ReviewRecord{
+				Timestamp: ts,
+				Reviewer:  reviewer,
+			}
+		} else if current != nil && strings.TrimSpace(line) != "" {
+			// Parse "VERDICT — comment" or just "VERDICT"
+			parts := strings.SplitN(line, " — ", 2)
+			current.Verdict = strings.ToLower(strings.TrimSpace(parts[0]))
+			if len(parts) > 1 {
+				current.Comment = strings.TrimSpace(parts[1])
+			}
+			// Infer stage from context — will be set by workflow logic.
+		}
+	}
+	if current != nil {
+		reviews = append(reviews, *current)
+	}
+	return reviews
 }
 
 func writeField(buf *bytes.Buffer, key, value string) {

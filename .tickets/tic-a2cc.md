@@ -1,6 +1,6 @@
 ---
 id: tic-a2cc
-status: open
+status: closed
 deps: [tic-c930]
 links: []
 created: 2026-02-26T04:33:31Z
@@ -11,6 +11,8 @@ parent: tic-46c0
 tags: [redesign, pipeline]
 ---
 # Add migration logic in pkg/ticket/migrate.go
+
+
 
 
 

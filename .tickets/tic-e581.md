@@ -1,6 +1,6 @@
 ---
 id: tic-e581
-status: open
+status: closed
 deps: [tic-843c, tic-2602]
 links: []
 created: 2026-02-26T04:33:26Z
@@ -11,6 +11,8 @@ parent: tic-46c0
 tags: [redesign, pipeline]
 ---
 # Implement advance/skip/review workflow logic in pkg/ticket/workflow.go
+
+
 
 
 

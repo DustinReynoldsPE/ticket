@@ -1,6 +1,6 @@
 ---
 id: tic-843c
-status: open
+status: closed
 deps: [tic-5eb6]
 links: []
 created: 2026-02-26T04:33:18Z
@@ -11,6 +11,8 @@ parent: tic-46c0
 tags: [redesign, pipeline]
 ---
 # Add gate definitions in pkg/ticket/gates.go
+
+
 
 
 

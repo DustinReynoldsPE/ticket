@@ -1,6 +1,6 @@
 ---
 id: tic-c930
-status: open
+status: closed
 deps: [tic-2602]
 links: []
 created: 2026-02-26T04:33:35Z
@@ -11,6 +11,8 @@ parent: tic-46c0
 tags: [redesign, pipeline]
 ---
 # Update format.go for new fields and Review Log parsing
+
+
 
 
 

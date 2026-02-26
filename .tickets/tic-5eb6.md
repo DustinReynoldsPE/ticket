@@ -1,6 +1,6 @@
 ---
 id: tic-5eb6
-status: open
+status: closed
 deps: [tic-f258]
 links: []
 created: 2026-02-26T04:33:12Z
@@ -11,6 +11,8 @@ parent: tic-46c0
 tags: [redesign, pipeline]
 ---
 # Add type-dependent pipeline definitions in pkg/ticket/pipeline.go
+
+
 
 
 

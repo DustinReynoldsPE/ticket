@@ -256,3 +256,235 @@ func TestParse_RealTicketFiles(t *testing.T) {
 	}
 	t.Logf("successfully parsed %d ticket files", parsed)
 }
+
+func TestSerialize_StageFields(t *testing.T) {
+	tk := &Ticket{
+		ID:            "t-stage",
+		Stage:         StageDesign,
+		Review:        ReviewPending,
+		Risk:          RiskHigh,
+		Type:          TypeFeature,
+		Priority:      1,
+		Deps:          []string{},
+		Links:         []string{},
+		Tags:          []string{},
+		Skipped:       []Stage{StageSpec},
+		Conversations: []string{"sess-abc123"},
+		Created:       time.Date(2026, 2, 25, 10, 0, 0, 0, time.UTC),
+		Title:         "Stage test",
+		Body:          "\nDescription.\n",
+	}
+
+	data, err := Serialize(tk)
+	if err != nil {
+		t.Fatalf("Serialize: %v", err)
+	}
+	s := string(data)
+
+	if !strings.Contains(s, "stage: design") {
+		t.Error("missing stage field")
+	}
+	if !strings.Contains(s, "review: pending") {
+		t.Error("missing review field")
+	}
+	if !strings.Contains(s, "risk: high") {
+		t.Error("missing risk field")
+	}
+	if !strings.Contains(s, "skipped: [spec]") {
+		t.Error("missing skipped field")
+	}
+	if !strings.Contains(s, "conversations: [sess-abc123]") {
+		t.Error("missing conversations field")
+	}
+}
+
+func TestSerialize_StageRoundTrip(t *testing.T) {
+	tk := &Ticket{
+		ID:            "t-rt",
+		Stage:         StageImplement,
+		Review:        ReviewApproved,
+		Risk:          RiskNormal,
+		Type:          TypeBug,
+		Priority:      2,
+		Deps:          []string{},
+		Links:         []string{},
+		Skipped:       []Stage{},
+		Conversations: []string{},
+		Created:       time.Date(2026, 2, 25, 10, 0, 0, 0, time.UTC),
+		Title:         "Round trip",
+		Body:          "\nBug description.\n",
+	}
+
+	data, err := Serialize(tk)
+	if err != nil {
+		t.Fatalf("Serialize: %v", err)
+	}
+
+	parsed, err := Parse(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("Parse after Serialize: %v", err)
+	}
+
+	if parsed.Stage != StageImplement {
+		t.Errorf("Stage = %s, want implement", parsed.Stage)
+	}
+	if parsed.Review != ReviewApproved {
+		t.Errorf("Review = %s, want approved", parsed.Review)
+	}
+	if parsed.Risk != RiskNormal {
+		t.Errorf("Risk = %s, want normal", parsed.Risk)
+	}
+}
+
+func TestSerialize_ReviewLog(t *testing.T) {
+	tk := &Ticket{
+		ID:       "t-revlog",
+		Stage:    StageDesign,
+		Type:     TypeFeature,
+		Priority: 1,
+		Deps:     []string{},
+		Links:    []string{},
+		Created:  time.Date(2026, 2, 25, 10, 0, 0, 0, time.UTC),
+		Title:    "With reviews",
+		Body:     "\nDescription.\n",
+		Reviews: []ReviewRecord{
+			{
+				Timestamp: time.Date(2026, 2, 25, 12, 0, 0, 0, time.UTC),
+				Reviewer:  "agent:design-reviewer",
+				Verdict:   "approved",
+				Comment:   "All file paths verified.",
+			},
+		},
+	}
+
+	data, err := Serialize(tk)
+	if err != nil {
+		t.Fatalf("Serialize: %v", err)
+	}
+	s := string(data)
+
+	if !strings.Contains(s, "## Review Log") {
+		t.Error("missing Review Log section")
+	}
+	if !strings.Contains(s, "[agent:design-reviewer]") {
+		t.Error("missing reviewer in review log")
+	}
+	if !strings.Contains(s, "APPROVED") {
+		t.Error("missing verdict in review log")
+	}
+}
+
+func TestParse_ReviewLog(t *testing.T) {
+	input := `---
+id: t-revlog
+stage: design
+deps: []
+links: []
+created: 2026-02-25T10:00:00Z
+type: feature
+priority: 1
+---
+# With reviews
+
+Description.
+
+## Review Log
+
+**2026-02-25T12:00:00Z [agent:design-reviewer]**
+APPROVED — All file paths verified.
+
+**2026-02-25T14:00:00Z [human:steve]**
+APPROVED — Proceed to implementation.
+`
+	tk, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if len(tk.Reviews) != 2 {
+		t.Fatalf("len(Reviews) = %d, want 2", len(tk.Reviews))
+	}
+	if tk.Reviews[0].Reviewer != "agent:design-reviewer" {
+		t.Errorf("Reviews[0].Reviewer = %q, want agent:design-reviewer", tk.Reviews[0].Reviewer)
+	}
+	if tk.Reviews[0].Verdict != "approved" {
+		t.Errorf("Reviews[0].Verdict = %q, want approved", tk.Reviews[0].Verdict)
+	}
+	if tk.Reviews[0].Comment != "All file paths verified." {
+		t.Errorf("Reviews[0].Comment = %q", tk.Reviews[0].Comment)
+	}
+	if tk.Reviews[1].Reviewer != "human:steve" {
+		t.Errorf("Reviews[1].Reviewer = %q, want human:steve", tk.Reviews[1].Reviewer)
+	}
+}
+
+func TestParse_BackwardCompat_StatusOnly(t *testing.T) {
+	// Legacy ticket with only status field — should still parse.
+	input := `---
+id: t-legacy
+status: open
+deps: []
+links: []
+created: 2026-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Legacy ticket
+
+Description.
+`
+	tk, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if tk.Status != StatusOpen {
+		t.Errorf("Status = %q, want open", tk.Status)
+	}
+	if tk.Stage != "" {
+		t.Errorf("Stage = %q, want empty", tk.Stage)
+	}
+}
+
+func TestParse_ReviewLogAndNotes(t *testing.T) {
+	input := `---
+id: t-both
+stage: implement
+deps: []
+links: []
+created: 2026-02-25T10:00:00Z
+type: feature
+priority: 1
+---
+# Both sections
+
+Description.
+
+## Review Log
+
+**2026-02-25T12:00:00Z [agent:code-review]**
+APPROVED — Code looks good.
+
+## Notes
+
+**2026-02-25T14:00:00Z**
+
+Decision: use JWT for auth.
+`
+	tk, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if len(tk.Reviews) != 1 {
+		t.Fatalf("len(Reviews) = %d, want 1", len(tk.Reviews))
+	}
+	if len(tk.Notes) != 1 {
+		t.Fatalf("len(Notes) = %d, want 1", len(tk.Notes))
+	}
+	if tk.Reviews[0].Reviewer != "agent:code-review" {
+		t.Errorf("review reviewer = %q", tk.Reviews[0].Reviewer)
+	}
+	if !strings.Contains(tk.Notes[0].Text, "JWT") {
+		t.Errorf("note text = %q, should contain JWT", tk.Notes[0].Text)
+	}
+}

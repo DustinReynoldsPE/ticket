@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Stage pipeline system** — type-dependent stage pipelines replace flat status enum
+  - 7 stages: triage → spec → design → implement → test → verify → done
+  - Type-dependent pipelines: feature (7), bug (5), task (5), chore (3), epic (4)
+- **Gate enforcement** — structural preconditions for stage transitions
+  - Risk-scaled gates (low=advisory, normal=standard, high/critical=strict)
+  - Mandatory code + impl review gates at implement → test
+- **Review system** — ReviewState tracking (pending/approved/rejected) with ReviewRecord audit log
+- **Pipeline workflow functions** — `Advance()`, `Skip()`, `SetReview()` in pkg/ticket
+- **Stage propagation** — `PropagateStage()` for parent stage advancement based on children
+- **Migration** — `MigrateTicket()`/`MigrateAll()` for status → stage conversion
+  - Mapping: open→triage, in_progress→implement, needs_testing→test, closed→done
+- **Inbox/next-action derivation** — `Inbox()`, `NextAction()`, `Projects()` for workflow visibility
+- New Ticket struct fields: Stage, Review, Risk, Skipped, Conversations, Reviews
+- Review Log section parsing and serialization in ticket markdown format
+- `ValidateStageForType()`, `ValidateGates()` validation functions
+- Pipeline helpers: `NextStage()`, `PrevStage()`, `HasStage()`, `StageIndex()`, `IsFinalStage()`
+
+### Changed
+- Ticket validation accepts either `status` (legacy) or `stage` (pipeline) — dual support for migration
+- format.go writes stage/review/risk/skipped/conversations fields when present
+
 ## [2.0.0] - 2026-02-23
 
 Go rewrite. Full CLI parity with bash version plus new capabilities.
