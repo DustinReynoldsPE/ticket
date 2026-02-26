@@ -604,6 +604,167 @@ assert_fail "tk move $MOVE1 /tmp/nonexistent-repo-xyz" "Move to invalid target f
 rm -rf "$MOVE_TARGET"
 
 # ============================================================================
+log_section "STAGE PIPELINE — CREATE WITH STAGE"
+# ============================================================================
+
+# New tickets should get stage: triage
+STAGE1=$(tk create "Stage Test Feature" -t feature | extract_id)
+track_id "$STAGE1"
+assert_contains "tk show $STAGE1" "stage: triage" "New ticket has stage: triage"
+
+STAGE2=$(tk create "Stage Test Bug" -t bug | extract_id)
+track_id "$STAGE2"
+assert_contains "tk show $STAGE2" "stage: triage" "New bug has stage: triage"
+
+# ============================================================================
+log_section "STAGE PIPELINE — ADVANCE"
+# ============================================================================
+
+# Advance a chore: triage → implement (needs description)
+CHORE=$(tk create "Advance Test Chore" -t chore -d "Has a description" | extract_id)
+track_id "$CHORE"
+assert_ok "tk advance $CHORE" "Advance chore triage → implement"
+assert_contains "tk show $CHORE" "stage: implement" "Chore advanced to implement"
+
+# Advance without gate satisfaction should fail
+FEAT=$(tk create "Advance Test Feature" -t feature -d "Feature description" | extract_id)
+track_id "$FEAT"
+assert_ok "tk advance $FEAT" "Advance feature triage → spec"
+assert_contains "tk show $FEAT" "stage: spec" "Feature advanced to spec"
+
+# spec → design requires AC + review approved — should fail without them
+assert_fail "tk advance $FEAT" "Advance spec → design fails without AC and review"
+
+# Force bypass
+assert_ok "tk advance $FEAT --force" "Advance with --force bypasses gates"
+assert_contains "tk show $FEAT" "stage: design" "Feature forced to design"
+
+# ============================================================================
+log_section "STAGE PIPELINE — REVIEW"
+# ============================================================================
+
+# Review a ticket
+assert_ok "tk review $FEAT --approve --comment 'Design looks good'" "Approve review"
+assert_contains "tk show $FEAT" "review: approved" "Review state is approved"
+assert_contains "tk log $FEAT" "approved" "Log shows review verdict"
+
+# Reject
+assert_ok "tk review $FEAT --reject --comment 'Needs rework'" "Reject review"
+assert_contains "tk show $FEAT" "review: rejected" "Review state is rejected"
+
+# Must specify exactly one of approve/reject
+assert_fail "tk review $FEAT" "Review without approve/reject fails"
+
+# ============================================================================
+log_section "STAGE PIPELINE — SKIP"
+# ============================================================================
+
+SKIP_FEAT=$(tk create "Skip Test Feature" -t feature -d "Skip test" | extract_id)
+track_id "$SKIP_FEAT"
+
+# Skip from triage to implement
+assert_ok "tk skip $SKIP_FEAT --to implement --reason 'trivial feature'" "Skip to implement"
+assert_contains "tk show $SKIP_FEAT" "stage: implement" "Skipped to implement"
+assert_contains "tk show $SKIP_FEAT" "skipped:" "Skipped stages recorded"
+
+# Skip backward should fail
+assert_fail "tk skip $SKIP_FEAT --to triage --reason 'oops'" "Skip backward fails"
+
+# Skip without reason should fail
+SKIP2=$(tk create "Skip No Reason" -t feature -d "test" | extract_id)
+track_id "$SKIP2"
+assert_fail "tk skip $SKIP2 --to implement" "Skip without reason fails"
+
+# ============================================================================
+log_section "STAGE PIPELINE — LOG"
+# ============================================================================
+
+assert_contains "tk log $FEAT" "Current stage:" "Log shows current stage"
+assert_contains "tk log $FEAT" "Review Log:" "Log shows review history"
+
+# ============================================================================
+log_section "STAGE PIPELINE — PIPELINE VIEW"
+# ============================================================================
+
+assert_ok "tk pipeline" "Pipeline command succeeds"
+assert_contains "tk pipeline" "===" "Pipeline shows stage groups"
+
+# Filter by stage
+assert_ok "tk pipeline --stage=triage" "Pipeline --stage filter works"
+
+# ============================================================================
+log_section "STAGE PIPELINE — INBOX"
+# ============================================================================
+
+# Triage tickets need human attention
+INBOX_TICKET=$(tk create "Inbox Test" -t feature -d "Needs triage" | extract_id)
+track_id "$INBOX_TICKET"
+assert_contains "tk inbox" "$INBOX_TICKET" "Inbox shows triage ticket"
+assert_contains "tk inbox" "human-input" "Inbox shows action kind"
+
+# ============================================================================
+log_section "STAGE PIPELINE — NEXT"
+# ============================================================================
+
+# Create an epic with children to test projects view
+NEXT_EPIC=$(tk create "Next Test Epic" -t epic | extract_id)
+track_id "$NEXT_EPIC"
+tk edit "$NEXT_EPIC" -s in_progress
+NEXT_CH1=$(tk create "Next Child 1" --parent "$NEXT_EPIC" -d "child" | extract_id)
+track_id "$NEXT_CH1"
+assert_contains "tk next" "$NEXT_EPIC" "Next shows epic"
+assert_contains "tk next" "triage" "Next shows stage breakdown"
+
+# ============================================================================
+log_section "STAGE PIPELINE — MIGRATE"
+# ============================================================================
+
+# Dry run should report what would change
+assert_ok "tk migrate --dry-run" "Migrate dry run succeeds"
+
+# ============================================================================
+log_section "STAGE PIPELINE — BACKWARD COMPAT"
+# ============================================================================
+
+# close should work on stage-based tickets
+COMPAT=$(tk create "Compat Test" -t chore -d "test" | extract_id)
+track_id "$COMPAT"
+assert_ok "tk close $COMPAT" "close works on stage-based ticket"
+assert_contains "tk show $COMPAT" "done" "Closed ticket shows stage: done"
+
+# reopen should work
+assert_ok "tk reopen $COMPAT" "reopen works on stage-based ticket"
+assert_contains "tk show $COMPAT" "triage" "Reopened ticket shows stage: triage"
+
+# ============================================================================
+log_section "STAGE PIPELINE — LS GROUP-BY PIPELINE"
+# ============================================================================
+
+assert_contains "tk ls --group-by=pipeline" "===" "group-by pipeline shows groups"
+
+# ============================================================================
+log_section "STAGE PIPELINE — EDIT STAGE/REVIEW/RISK"
+# ============================================================================
+
+EDIT_STAGE=$(tk create "Edit Stage Test" -t task -d "test" | extract_id)
+track_id "$EDIT_STAGE"
+assert_ok "tk edit $EDIT_STAGE --stage implement" "Edit stage via --stage"
+assert_contains "tk show $EDIT_STAGE" "stage: implement" "Stage edited"
+
+assert_ok "tk edit $EDIT_STAGE --review pending" "Edit review via --review"
+assert_contains "tk show $EDIT_STAGE" "review: pending" "Review edited"
+
+assert_ok "tk edit $EDIT_STAGE --risk high" "Edit risk via --risk"
+assert_contains "tk show $EDIT_STAGE" "risk: high" "Risk edited"
+
+# Invalid stage
+assert_fail "tk edit $EDIT_STAGE --stage invalid" "Reject invalid stage"
+# Invalid review
+assert_fail "tk edit $EDIT_STAGE --review invalid" "Reject invalid review state"
+# Invalid risk
+assert_fail "tk edit $EDIT_STAGE --risk invalid" "Reject invalid risk level"
+
+# ============================================================================
 log_section "ERROR HANDLING"
 # ============================================================================
 

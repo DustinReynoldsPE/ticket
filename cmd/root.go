@@ -26,6 +26,16 @@ Creating & Editing:
   add-note <id> [text]       Append timestamped note (stdin if no text)
   delete <id> [id...]        Delete ticket(s)
 
+Pipeline:
+  advance <id> [--to <stage>] [--force]  Advance ticket to next pipeline stage
+  skip <id> --to <stage> --reason '...'  Skip to a later stage with justification
+  review <id> --approve|--reject         Record review verdict on current stage
+  log <id>                               Show stage transition and review history
+  pipeline [--stage <stage>]             Show tickets grouped by pipeline stage
+  inbox                                  Show tickets needing human attention
+  next                                   Show per-project next actions
+  migrate [--dry-run]                    Migrate legacy tickets to stage pipeline
+
 Dependencies & Links:
   dep <id> <dep-id>          Add dependency (id depends on dep-id)
   undep <id> <dep-id>        Remove dependency
@@ -46,9 +56,9 @@ Query (JSON):
   tk query '.type == "bug" and .priority <= 1'    # compound filter
   tk query '.title | test("deploy"; "i")'         # regex search
 
-  JSON fields: id, status, type, priority, title, description,
+  JSON fields: id, status, stage, type, priority, title, description,
     design, acceptance_criteria, deps[], links[], tags[],
-    created, assignee, parent, notes, external_ref
+    created, assignee, parent, notes, external_ref, review, risk
   Body sections (## Heading) become snake_case fields.
 
 Analytics:
@@ -70,7 +80,7 @@ Filter flags for ls:
   -a, --assignee=X   Filter by assignee
   -T, --tag=X        Filter by tag
   --parent=X         Children of ticket X
-  --group-by=X       Group by: workflow | type | status | priority
+  --group-by=X       Group by: workflow | pipeline | type | status | priority
 
 Filter flags for ready, blocked, closed:
   -a, --assignee=X   Filter by assignee
@@ -84,11 +94,17 @@ Create & edit options:
   -t, --type           bug | feature | task | epic | chore [default: task]
   -p, --priority       0-4, 0=highest [default: 2]
   -s, --status         open | in_progress | needs_testing | closed (edit only)
+  --stage              Pipeline stage (edit only)
+  --review             Review state: pending | approved | rejected (edit only)
+  --risk               Risk level: low | normal | high | critical (edit only)
   --title              New title (edit only)
   -a, --assignee       Assignee
   --parent             Parent ticket ID
   --tags               Comma-separated (e.g., --tags ui,backend)
   --external-ref       External reference (e.g., gh-123)
+
+Stages: triage → spec → design → implement → test → verify → done
+  Pipelines are type-dependent (e.g., chores skip spec/design/test/verify).
 
 Partial ID matching: 'tk show 5c4' matches 'nw-5c46'
 Tickets stored as markdown in .tickets/`

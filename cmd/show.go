@@ -64,11 +64,11 @@ func showTicket(store *ticket.FileStore, id string) error {
 
 	fmt.Print(output)
 
-	// Blockers: unclosed deps.
+	// Blockers: unclosed deps (check both status and stage).
 	var blockers []string
 	for _, depID := range t.Deps {
 		dep, ok := byID[depID]
-		if !ok || dep.Status != ticket.StatusClosed {
+		if !ok || (dep.Status != ticket.StatusClosed && dep.Stage != ticket.StageDone) {
 			blockers = append(blockers, depID)
 		}
 	}
@@ -83,10 +83,10 @@ func showTicket(store *ticket.FileStore, id string) error {
 		}
 	}
 
-	// Blocking: tickets that depend on this one and aren't closed.
+	// Blocking: tickets that depend on this one and aren't closed/done.
 	var blocking []string
 	for _, tk := range allTickets {
-		if tk.Status == ticket.StatusClosed {
+		if tk.Status == ticket.StatusClosed || tk.Stage == ticket.StageDone {
 			continue
 		}
 		for _, depID := range tk.Deps {

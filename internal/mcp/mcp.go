@@ -31,28 +31,47 @@ func NewServer(ticketsDir string) *mcp.Server {
 	registerReady(server, store)
 	registerBlocked(server, store)
 	registerWorkflow(server)
+	registerAdvance(server, store)
+	registerReview(server, store)
+	registerSkip(server, store)
+	registerMigrate(server, store)
+	registerInbox(server, store)
 
 	return server
 }
 
 // JSON representation of a ticket for MCP responses.
 type ticketJSON struct {
-	ID          string   `json:"id"`
-	Status      string   `json:"status"`
-	Deps        []string `json:"deps"`
-	Links       []string `json:"links"`
-	Created     string   `json:"created"`
-	Type        string   `json:"type"`
-	Priority    int      `json:"priority"`
-	Assignee    string   `json:"assignee,omitempty"`
-	ExternalRef string   `json:"external_ref,omitempty"`
-	Parent      string   `json:"parent,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	Title       string   `json:"title"`
-	Description string   `json:"description,omitempty"`
-	Design      string   `json:"design,omitempty"`
-	Acceptance  string   `json:"acceptance_criteria,omitempty"`
-	Notes       []noteJSON `json:"notes,omitempty"`
+	ID            string       `json:"id"`
+	Status        string       `json:"status,omitempty"`
+	Stage         string       `json:"stage,omitempty"`
+	Review        string       `json:"review,omitempty"`
+	Risk          string       `json:"risk,omitempty"`
+	Deps          []string     `json:"deps"`
+	Links         []string     `json:"links"`
+	Created       string       `json:"created"`
+	Type          string       `json:"type"`
+	Priority      int          `json:"priority"`
+	Assignee      string       `json:"assignee,omitempty"`
+	ExternalRef   string       `json:"external_ref,omitempty"`
+	Parent        string       `json:"parent,omitempty"`
+	Tags          []string     `json:"tags,omitempty"`
+	Skipped       []string     `json:"skipped,omitempty"`
+	Conversations []string     `json:"conversations,omitempty"`
+	Title         string       `json:"title"`
+	Description   string       `json:"description,omitempty"`
+	Design        string       `json:"design,omitempty"`
+	Acceptance    string       `json:"acceptance_criteria,omitempty"`
+	Notes         []noteJSON   `json:"notes,omitempty"`
+	Reviews       []reviewJSON `json:"reviews,omitempty"`
+}
+
+type reviewJSON struct {
+	Timestamp string `json:"timestamp"`
+	Reviewer  string `json:"reviewer"`
+	Verdict   string `json:"verdict"`
+	Comment   string `json:"comment,omitempty"`
+	Stage     string `json:"stage,omitempty"`
 }
 
 type noteJSON struct {
@@ -62,18 +81,26 @@ type noteJSON struct {
 
 func toJSON(t *ticket.Ticket) ticketJSON {
 	j := ticketJSON{
-		ID:          t.ID,
-		Status:      string(t.Status),
-		Deps:        nonNil(t.Deps),
-		Links:       nonNil(t.Links),
-		Created:     t.Created.UTC().Format("2006-01-02T15:04:05Z"),
-		Type:        string(t.Type),
-		Priority:    t.Priority,
-		Assignee:    t.Assignee,
-		ExternalRef: t.ExternalRef,
-		Parent:      t.Parent,
-		Tags:        t.Tags,
-		Title:       t.Title,
+		ID:            t.ID,
+		Status:        string(t.Status),
+		Stage:         string(t.Stage),
+		Review:        string(t.Review),
+		Risk:          string(t.Risk),
+		Deps:          nonNil(t.Deps),
+		Links:         nonNil(t.Links),
+		Created:       t.Created.UTC().Format("2006-01-02T15:04:05Z"),
+		Type:          string(t.Type),
+		Priority:      t.Priority,
+		Assignee:      t.Assignee,
+		ExternalRef:   t.ExternalRef,
+		Parent:        t.Parent,
+		Tags:          t.Tags,
+		Conversations: t.Conversations,
+		Title:         t.Title,
+	}
+
+	for _, s := range t.Skipped {
+		j.Skipped = append(j.Skipped, string(s))
 	}
 
 	// Extract body sections.
@@ -86,6 +113,16 @@ func toJSON(t *ticket.Ticket) ticketJSON {
 		j.Notes = append(j.Notes, noteJSON{
 			Timestamp: n.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
 			Text:      n.Text,
+		})
+	}
+
+	for _, r := range t.Reviews {
+		j.Reviews = append(j.Reviews, reviewJSON{
+			Timestamp: r.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
+			Reviewer:  r.Reviewer,
+			Verdict:   r.Verdict,
+			Comment:   r.Comment,
+			Stage:     string(r.Stage),
 		})
 	}
 
@@ -574,23 +611,185 @@ type emptyArgs struct{}
 func registerWorkflow(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "ticket_workflow",
-		Description: "Show the ticket workflow guide (types, statuses, conventions).",
+		Description: "Show the ticket workflow guide (types, stages, pipelines, conventions).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args emptyArgs) (*mcp.CallToolResult, any, error) {
 		guide := `Ticket Workflow Guide
 
 Types: feature, bug, task, epic, chore
-Statuses: open → in_progress → needs_testing → closed
+
+Stage Pipelines (type-dependent):
+  feature:  triage → spec → design → implement → test → verify → done
+  bug:      triage → implement → test → verify → done
+  task:     triage → implement → test → verify → done
+  chore:    triage → implement → done
+  epic:     triage → spec → design → done
+
+Review states: pending, approved, rejected
+Risk levels: low, normal, high, critical
+
+Commands:
+- ticket_advance: move ticket to next stage (enforces gates)
+- ticket_review: record approve/reject verdict
+- ticket_skip: jump to a stage with reason
+- ticket_inbox: show items needing human attention
 
 Conventions:
-- Epics group related work; set --parent to nest tasks under epics
-- Dependencies (deps) gate readiness: a ticket is "ready" when all deps are closed
-- Parent gating: children only become ready when their parent is in_progress
-- Status propagation: when all children close, parent auto-closes
-- Priority: 0=critical, 1=high, 2=normal, 3=low, 4=backlog
-- Tags: free-form labels (e.g., phase-1, frontend, backend)
-- Notes: timestamped append-only log for progress updates`
+- Epics group related work; set parent to nest tasks under epics
+- Dependencies gate readiness: a ticket is "ready" when all deps are done
+- Gate checks enforce prerequisites at each stage transition
+- Priority: 0=critical, 1=high, 2=normal, 3=low, 4=backlog`
 
 		r, err := textResult(guide)
 		return r, nil, err
+	})
+}
+
+type advanceArgs struct {
+	ID     string `json:"id" jsonschema:"ticket ID"`
+	To     string `json:"to,omitempty" jsonschema:"target stage (default: next in pipeline)"`
+	Reason string `json:"reason,omitempty" jsonschema:"reason for skip (required when skipping)"`
+	Force  bool   `json:"force,omitempty" jsonschema:"bypass gate checks"`
+}
+
+func registerAdvance(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_advance",
+		Description: "Advance a ticket to its next pipeline stage. Enforces gate checks unless force=true.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args advanceArgs) (*mcp.CallToolResult, any, error) {
+		opts := ticket.AdvanceOptions{Force: args.Force}
+		if args.To != "" {
+			opts.SkipTo = ticket.Stage(args.To)
+			opts.Reason = args.Reason
+		}
+
+		result, err := ticket.Advance(store, args.ID, opts)
+		if err != nil {
+			msg := err.Error()
+			if result != nil && len(result.GateErrors) > 0 {
+				msg += "\nGate failures:"
+				for _, e := range result.GateErrors {
+					msg += "\n  - " + e.Error()
+				}
+			}
+			r, _ := errResult("%s", msg)
+			return r, nil, nil
+		}
+
+		t, _ := store.Get(args.ID)
+		r, jsonErr := jsonResult(toJSON(t))
+		return r, nil, jsonErr
+	})
+}
+
+type reviewArgs struct {
+	ID       string `json:"id" jsonschema:"ticket ID"`
+	Approve  bool   `json:"approve,omitempty" jsonschema:"approve the current stage"`
+	Reject   bool   `json:"reject,omitempty" jsonschema:"reject the current stage"`
+	Comment  string `json:"comment,omitempty" jsonschema:"review comment"`
+	Reviewer string `json:"reviewer,omitempty" jsonschema:"reviewer identity (e.g. human:steve, agent:code-review)"`
+}
+
+func registerReview(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_review",
+		Description: "Record a review verdict (approve or reject) on a ticket's current stage.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args reviewArgs) (*mcp.CallToolResult, any, error) {
+		if args.Approve == args.Reject {
+			r, _ := errResult("specify exactly one of approve or reject")
+			return r, nil, nil
+		}
+
+		reviewer := args.Reviewer
+		if reviewer == "" {
+			reviewer = "agent:mcp"
+		}
+
+		var verdict ticket.ReviewState
+		if args.Approve {
+			verdict = ticket.ReviewApproved
+		} else {
+			verdict = ticket.ReviewRejected
+		}
+
+		if err := ticket.SetReview(store, args.ID, reviewer, verdict, args.Comment); err != nil {
+			r, _ := errResult("review failed: %v", err)
+			return r, nil, nil
+		}
+
+		t, _ := store.Get(args.ID)
+		r, jsonErr := jsonResult(toJSON(t))
+		return r, nil, jsonErr
+	})
+}
+
+type skipArgs struct {
+	ID     string `json:"id" jsonschema:"ticket ID"`
+	To     string `json:"to" jsonschema:"target stage to skip to"`
+	Reason string `json:"reason" jsonschema:"reason for skipping stages"`
+}
+
+func registerSkip(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_skip",
+		Description: "Skip a ticket to a named stage with an audit trail.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args skipArgs) (*mcp.CallToolResult, any, error) {
+		_, err := ticket.Skip(store, args.ID, ticket.Stage(args.To), args.Reason)
+		if err != nil {
+			r, _ := errResult("skip failed: %v", err)
+			return r, nil, nil
+		}
+
+		t, _ := store.Get(args.ID)
+		r, jsonErr := jsonResult(toJSON(t))
+		return r, nil, jsonErr
+	})
+}
+
+func registerMigrate(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_migrate",
+		Description: "Migrate all status-based tickets to stage pipeline. Idempotent.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args emptyArgs) (*mcp.CallToolResult, any, error) {
+		count, err := ticket.MigrateAll(store)
+		if err != nil {
+			r, _ := errResult("migration failed: %v", err)
+			return r, nil, nil
+		}
+
+		r, err := textResult(fmt.Sprintf("Migrated %d ticket(s)", count))
+		return r, nil, err
+	})
+}
+
+type inboxArgs struct{}
+
+func registerInbox(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_inbox",
+		Description: "Show tickets needing human attention, sorted by priority then age.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args inboxArgs) (*mcp.CallToolResult, any, error) {
+		items, err := ticket.Inbox(store)
+		if err != nil {
+			r, _ := errResult("inbox failed: %v", err)
+			return r, nil, nil
+		}
+
+		type inboxItemJSON struct {
+			Ticket ticketJSON `json:"ticket"`
+			Action string     `json:"action"`
+			Detail string     `json:"detail"`
+		}
+
+		var result []inboxItemJSON
+		for _, item := range items {
+			result = append(result, inboxItemJSON{
+				Ticket: toJSON(item.Ticket),
+				Action: string(item.Action),
+				Detail: item.Detail,
+			})
+		}
+
+		r, jsonErr := jsonResult(result)
+		return r, nil, jsonErr
 	})
 }

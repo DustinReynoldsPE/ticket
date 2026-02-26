@@ -43,10 +43,10 @@ func runLs(cmd *cobra.Command, args []string) error {
 	if v, _ := cmd.Flags().GetString("status"); v != "" {
 		opts.Status = ticket.Status(v)
 	} else if groupBy == "" {
-		// Default: exclude closed only when not grouping.
+		// Default: exclude closed/done.
 		var filtered []*ticket.Ticket
 		for _, t := range tickets {
-			if t.Status != ticket.StatusClosed {
+			if t.Status != ticket.StatusClosed && t.Stage != ticket.StageDone {
 				filtered = append(filtered, t)
 			}
 		}
@@ -88,6 +88,8 @@ func printGrouped(store *ticket.FileStore, tickets []*ticket.Ticket, groupBy str
 		switch groupBy {
 		case "workflow":
 			name, order = workflowGroup(store, t)
+		case "pipeline":
+			name, order = pipelineGroup(t)
 		case "type":
 			name = string(t.Type)
 			order = ticket.TypeOrder(t.Type)
@@ -98,7 +100,7 @@ func printGrouped(store *ticket.FileStore, tickets []*ticket.Ticket, groupBy str
 			name = fmt.Sprintf("P%d", t.Priority)
 			order = t.Priority
 		default:
-			return fmt.Errorf("unknown group-by value: %s (use: workflow, type, status, priority)", groupBy)
+			return fmt.Errorf("unknown group-by value: %s (use: workflow, pipeline, type, status, priority)", groupBy)
 		}
 
 		g, ok := groups[name]
@@ -182,8 +184,26 @@ func printRow(t *ticket.Ticket) {
 		depStr = " <- [" + strings.Join(t.Deps, ", ") + "]"
 	}
 
+	// Show stage if available, fall back to status.
+	state := string(t.Status)
+	if t.Stage != "" {
+		state = string(t.Stage)
+	}
+
 	fmt.Printf("%-9s P%d  %-11s %-14s %s%s\n",
-		t.ID, t.Priority, t.Type, t.Status, t.Title, depStr)
+		t.ID, t.Priority, t.Type, state, t.Title, depStr)
+}
+
+func pipelineGroup(t *ticket.Ticket) (string, int) {
+	stage := t.Stage
+	if stage == "" {
+		if s, ok := ticket.StatusToStage[t.Status]; ok {
+			stage = s
+		} else {
+			return string(t.Status), 99
+		}
+	}
+	return string(stage), ticket.StageIndex(t.Type, stage)
 }
 
 // addFilterFlags registers shared filter flags on a command.

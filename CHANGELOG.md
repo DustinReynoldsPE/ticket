@@ -19,10 +19,22 @@
 - Review Log section parsing and serialization in ticket markdown format
 - `ValidateStageForType()`, `ValidateGates()` validation functions
 - Pipeline helpers: `NextStage()`, `PrevStage()`, `HasStage()`, `StageIndex()`, `IsFinalStage()`
+- **CLI commands:** `advance`, `skip`, `review`, `log`, `pipeline`, `inbox`, `next`, `migrate`
+- **Edit flags:** `--stage`, `--review`, `--risk` for direct field editing
+- **ls --group-by=pipeline** groups tickets by pipeline stage
+- **Backward compatibility:** `start`/`close`/`reopen` map to stage equivalents with hint
+- **MCP tools:** `ticket_advance`, `ticket_review`, `ticket_skip`, `ticket_migrate`, `ticket_inbox`
+- New tickets default to `stage: triage` on creation
+- Integration tests for all pipeline commands (188 assertions total)
 
 ### Changed
 - Ticket validation accepts either `status` (legacy) or `stage` (pipeline) — dual support for migration
 - format.go writes stage/review/risk/skipped/conversations fields when present
+- `show` checks both status and stage for blocker/blocking display
+- `ls` excludes `stage: done` tickets from default view
+- `printRow` shows stage when available, falls back to status
+- Help text updated with pipeline commands and options
+- MCP `toJSON` includes stage/review/risk/skipped/conversations/reviews fields
 
 ## [2.0.0] - 2026-02-23
 

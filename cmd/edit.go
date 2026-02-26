@@ -23,6 +23,9 @@ func init() {
 	f.String("design", "", "design notes")
 	f.String("acceptance", "", "acceptance criteria")
 	f.StringP("status", "s", "", "status (open, in_progress, needs_testing, closed)")
+	f.String("stage", "", "pipeline stage (triage, spec, design, implement, test, verify, done)")
+	f.String("review", "", "review state (pending, approved, rejected)")
+	f.String("risk", "", "risk level (low, normal, high, critical)")
 	f.StringP("type", "t", "", "ticket type")
 	f.StringP("priority", "p", "", "priority (0-4)")
 	f.StringP("assignee", "a", "", "assignee name")
@@ -54,6 +57,27 @@ func runEdit(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		t.Status = ticket.Status(v)
+		changed = true
+	}
+	if v, _ := cmd.Flags().GetString("stage"); cmd.Flags().Changed("stage") {
+		if err := ticket.ValidateStage(ticket.Stage(v)); err != nil {
+			return err
+		}
+		t.Stage = ticket.Stage(v)
+		changed = true
+	}
+	if v, _ := cmd.Flags().GetString("review"); cmd.Flags().Changed("review") {
+		if err := ticket.ValidateReviewState(ticket.ReviewState(v)); err != nil {
+			return err
+		}
+		t.Review = ticket.ReviewState(v)
+		changed = true
+	}
+	if v, _ := cmd.Flags().GetString("risk"); cmd.Flags().Changed("risk") {
+		if err := ticket.ValidateRiskLevel(ticket.RiskLevel(v)); err != nil {
+			return err
+		}
+		t.Risk = ticket.RiskLevel(v)
 		changed = true
 	}
 	if v, _ := cmd.Flags().GetString("type"); cmd.Flags().Changed("type") {
@@ -180,15 +204,4 @@ func updateSection(body, heading, content string) string {
 		return body[:notesIdx] + "\n" + marker + "\n\n" + content + "\n" + body[notesIdx:]
 	}
 	return body + "\n" + marker + "\n\n" + content + "\n"
-}
-
-func propagationReason(s ticket.Status) string {
-	switch s {
-	case ticket.StatusClosed:
-		return "closed"
-	case ticket.StatusNeedsTesting:
-		return "done or testing"
-	default:
-		return string(s)
-	}
 }

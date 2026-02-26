@@ -1,6 +1,6 @@
 ---
 id: tic-cd50
-status: open
+status: closed
 deps: [tic-46c0]
 links: []
 created: 2026-02-26T04:32:55Z
@@ -10,6 +10,8 @@ assignee: Steve Macbeth
 tags: [redesign, cli, mcp]
 ---
 # Phase 2: CLI + MCP Parity
+
+
 
 
 
