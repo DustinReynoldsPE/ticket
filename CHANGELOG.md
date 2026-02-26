@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **`--repo` global flag** — operate on any repo from anywhere (`tk ls --repo ~/code/other-project`). Walks up from the given path to find `.tickets/`, same as CWD resolution. Errors if no `.tickets/` found.
 - **Stage pipeline system** — type-dependent stage pipelines replace flat status enum
   - 7 stages: triage → spec → design → implement → test → verify → done
   - Type-dependent pipelines: feature (7), bug (5), task (5), chore (3), epic (4)

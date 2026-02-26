@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var jsonOutput bool
+var (
+	jsonOutput bool
+	repoFlag   string
+)
 
 var helpText = `tk - ticket management CLI
 
@@ -107,6 +110,10 @@ Create & edit options:
 Stages: triage → spec → design → implement → test → verify → done
   Pipelines are type-dependent (e.g., chores skip spec/design/test/verify).
 
+Global flags:
+  --repo <path>    Operate on a different repo (walks up to find .tickets/)
+  --json           Output in JSON format
+
 Partial ID matching: 'tk show 5c4' matches 'nw-5c46'
 Tickets stored as markdown in .tickets/`
 
@@ -122,6 +129,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
+	rootCmd.PersistentFlags().StringVar(&repoFlag, "repo", "", "path to repo root (walks up to find .tickets/)")
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		fmt.Println(helpText)
 	})
@@ -134,21 +142,13 @@ func Execute() {
 	}
 }
 
-// TicketsDir returns the directory where tickets are stored.
-// Respects TICKETS_DIR env var, then walks up from CWD to find .tickets/,
-// falls back to .tickets in CWD.
-func TicketsDir() string {
-	if dir := os.Getenv("TICKETS_DIR"); dir != "" {
-		return dir
-	}
-	dir, err := os.Getwd()
-	if err != nil {
-		return ".tickets"
-	}
+// findTicketsDir walks up from startDir looking for a .tickets/ directory.
+func findTicketsDir(startDir string) (string, bool) {
+	dir := startDir
 	for {
 		candidate := filepath.Join(dir, ".tickets")
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
+			return candidate, true
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -156,5 +156,37 @@ func TicketsDir() string {
 		}
 		dir = parent
 	}
+	return "", false
+}
+
+// TicketsDir returns the directory where tickets are stored.
+// Priority: --repo flag → TICKETS_DIR env → walk up from CWD → fallback .tickets
+func TicketsDir() string {
+	if repoFlag != "" {
+		abs, err := filepath.Abs(repoFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid --repo path: %v\n", err)
+			os.Exit(1)
+		}
+		if dir, ok := findTicketsDir(abs); ok {
+			return dir
+		}
+		fmt.Fprintf(os.Stderr, "Error: no .tickets/ directory found under %s\n", abs)
+		os.Exit(1)
+	}
+	if dir := os.Getenv("TICKETS_DIR"); dir != "" {
+		return dir
+	}
+	if dir, ok := findTicketsDir(mustGetwd()); ok {
+		return dir
+	}
 	return ".tickets"
+}
+
+func mustGetwd() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return dir
 }

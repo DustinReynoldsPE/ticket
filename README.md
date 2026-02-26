@@ -32,6 +32,7 @@ The Go version includes everything in the bash version plus:
 - `tk ui` — interactive TUI with list view and pipeline kanban view
 - `tk serve` — MCP server for Claude Code integration
 - `--json` flag on all commands
+- `--repo <path>` — operate on any repo from anywhere
 
 ### Bash (deprecated)
 
@@ -49,6 +50,13 @@ Set `TICKETS_DIR` to store tickets in a custom location (default: `.tickets`):
 ```bash
 export TICKETS_DIR=".tasks"
 tk create "my ticket"
+```
+
+Use `--repo` to operate on a different repo from anywhere:
+
+```bash
+tk ls --repo ~/code/other-project
+tk show fix-auth --repo ~/code/other-project
 ```
 
 ## Agent Setup
