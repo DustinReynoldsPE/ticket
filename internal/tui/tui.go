@@ -16,20 +16,22 @@ const (
 	viewList view = iota
 	viewDetail
 	viewForm
+	viewPipeline
 )
 
 // App is the top-level bubbletea model.
 type App struct {
-	store   *ticket.FileStore
-	tickets []*ticket.Ticket
-	list    listModel
-	detail  detailModel
-	form    formModel
-	current view
-	width   int
-	height  int
-	status  string // transient status message
-	err     error
+	store    *ticket.FileStore
+	tickets  []*ticket.Ticket
+	list     listModel
+	detail   detailModel
+	form     formModel
+	pipeline pipelineModel
+	current  view
+	width    int
+	height   int
+	status   string // transient status message
+	err      error
 }
 
 // New creates a new App rooted at the given ticket directory.
@@ -66,6 +68,23 @@ type addNoteMsg struct {
 	text string
 }
 
+// advanceMsg advances a ticket to the next pipeline stage.
+type advanceMsg struct {
+	id    string
+	force bool
+}
+
+// reviewMsg records a review verdict on a ticket.
+type reviewMsg struct {
+	id      string
+	verdict ticket.ReviewState
+}
+
+// skipMsg skips a ticket ahead in the pipeline.
+type skipMsg struct {
+	id string
+}
+
 func loadTickets(store *ticket.FileStore) tea.Cmd {
 	return func() tea.Msg {
 		tickets, err := store.List()
@@ -95,11 +114,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.list.setSize(a.width, a.height)
 		a.detail.setSize(a.width, a.height)
 		a.form.setSize(a.width, a.height)
+		a.pipeline.setSize(a.width, a.height)
 		return a, nil
 
 	case ticketsLoadedMsg:
 		a.tickets = msg
 		a.list = newListModel(a.tickets, a.width, a.height)
+		a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
 		// Refresh detail view if currently showing a ticket.
 		if a.current == viewDetail && a.detail.ticket != nil {
 			for _, t := range a.tickets {
@@ -134,6 +155,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.handleAddNote(msg.id, msg.text)
 	case formSubmitMsg:
 		return a, a.handleCreateTicket(msg)
+	case advanceMsg:
+		return a, a.handleAdvance(msg.id, msg.force)
+	case reviewMsg:
+		return a, a.handleReview(msg.id, msg.verdict)
+	case skipMsg:
+		return a, a.handleSkip(msg.id)
 	case formCancelMsg:
 		a.current = viewList
 		return a, nil
@@ -168,6 +195,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					t := a.list.filtered[a.list.cursor]
 					return a, func() tea.Msg { return cyclePriorityMsg{id: t.ID} }
 				}
+			case "P":
+				a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
+				a.current = viewPipeline
+				return a, nil
 			}
 
 		case viewDetail:
@@ -176,7 +207,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch msg.String() {
 			case "esc":
-				// Refresh detail ticket from store in case it changed.
 				a.current = viewList
 				return a, nil
 			case "q":
@@ -191,6 +221,50 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "n":
 				a.detail.startInput(inputNote)
 				return a, nil
+			}
+
+		case viewPipeline:
+			switch msg.String() {
+			case "esc":
+				a.current = viewList
+				return a, nil
+			case "q":
+				return a, tea.Quit
+			case "enter":
+				if t := a.pipeline.selected(); t != nil {
+					a.detail = newDetailModel(t, a.width, a.height)
+					a.current = viewDetail
+					return a, nil
+				}
+			case "A":
+				if t := a.pipeline.selected(); t != nil {
+					return a, func() tea.Msg { return advanceMsg{id: t.ID} }
+				}
+			case "F":
+				if t := a.pipeline.selected(); t != nil {
+					return a, func() tea.Msg { return advanceMsg{id: t.ID, force: true} }
+				}
+			case "R":
+				if t := a.pipeline.selected(); t != nil {
+					if t.Review == ticket.ReviewPending {
+						return a, func() tea.Msg {
+							return reviewMsg{id: t.ID, verdict: ticket.ReviewApproved}
+						}
+					}
+					return a, func() tea.Msg {
+						return reviewMsg{id: t.ID, verdict: ticket.ReviewPending}
+					}
+				}
+			case "X":
+				if t := a.pipeline.selected(); t != nil {
+					return a, func() tea.Msg {
+						return reviewMsg{id: t.ID, verdict: ticket.ReviewRejected}
+					}
+				}
+			case "S":
+				if t := a.pipeline.selected(); t != nil {
+					return a, func() tea.Msg { return skipMsg{id: t.ID} }
+				}
 			}
 		}
 	}
@@ -209,6 +283,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		a.form, cmd = a.form.update(msg)
 		return a, cmd
+	case viewPipeline:
+		var cmd tea.Cmd
+		a.pipeline, cmd = a.pipeline.update(msg)
+		return a, cmd
 	}
 
 	return a, nil
@@ -225,6 +303,8 @@ func (a App) View() string {
 		content = a.detail.view()
 	case viewForm:
 		content = a.form.view()
+	case viewPipeline:
+		content = a.pipeline.view()
 	default:
 		content = a.list.view()
 	}
@@ -343,12 +423,72 @@ func (a *App) handleAddNote(id, text string) tea.Cmd {
 	)
 }
 
+func (a *App) handleAdvance(id string, force bool) tea.Cmd {
+	opts := ticket.AdvanceOptions{Force: force}
+	result, err := ticket.Advance(a.store, id, opts)
+	if err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	msg := fmt.Sprintf("%s: %s → %s", id, result.From, result.To)
+	if len(result.GateErrors) > 0 {
+		msg += fmt.Sprintf(" (%d gates overridden)", len(result.GateErrors))
+	}
+	return tea.Batch(
+		loadTickets(a.store),
+		func() tea.Msg { return statusMsg(msg) },
+	)
+}
+
+func (a *App) handleReview(id string, verdict ticket.ReviewState) tea.Cmd {
+	reviewer := "tui"
+	if err := ticket.SetReview(a.store, id, reviewer, verdict, ""); err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	msg := fmt.Sprintf("%s: review → %s", id, verdict)
+	return tea.Batch(
+		loadTickets(a.store),
+		func() tea.Msg { return statusMsg(msg) },
+	)
+}
+
+func (a *App) handleSkip(id string) tea.Cmd {
+	t, err := a.store.Get(id)
+	if err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	// Skip to the next-next stage (skip one stage ahead).
+	nextStage, ok := ticket.NextStage(t.Type, t.Stage)
+	if !ok {
+		return func() tea.Msg { return statusMsg(id + ": already at final stage") }
+	}
+	skipTo, ok := ticket.NextStage(t.Type, nextStage)
+	if !ok {
+		skipTo = nextStage // Just advance one if can't skip further.
+	}
+
+	result, err := ticket.Skip(a.store, id, skipTo, "skipped via TUI")
+	if err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	msg := fmt.Sprintf("%s: %s → %s (skipped %v)", id, result.From, result.To, result.Skipped)
+	return tea.Batch(
+		loadTickets(a.store),
+		func() tea.Msg { return statusMsg(msg) },
+	)
+}
+
 func (a *App) handleCreateTicket(msg formSubmitMsg) tea.Cmd {
 	t := &ticket.Ticket{
 		Title:    msg.title,
 		Type:     msg.ticketType,
 		Priority: msg.priority,
 		Assignee: msg.assignee,
+		Status:   ticket.StatusOpen,
+		Stage:    ticket.StageTriage,
 	}
 
 	if msg.description != "" {

@@ -3,6 +3,11 @@ set -euo pipefail
 
 # ticket - minimal ticket system with dependency tracking
 # Stores markdown files with YAML frontmatter in .tickets/
+#
+# DEPRECATED: This bash script is frozen. Use the Go binary instead:
+#   go install github.com/EnderRealm/ticket@latest
+# The Go version adds stage pipelines, gate enforcement, TUI, MCP server,
+# and other features not available here. Both read the same ticket format.
 
 TICKETS_DIR="${TICKETS_DIR:-.tickets}"
 

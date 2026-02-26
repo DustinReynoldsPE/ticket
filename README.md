@@ -26,22 +26,21 @@ cd ticket && go build -o ~/.local/bin/tk .
 ```
 
 The Go version includes everything in the bash version plus:
-- `tk ui` — interactive TUI (list/detail views, inline editing)
+- **Stage pipeline** — type-dependent stage pipelines (triage → spec → design → implement → test → verify → done)
+- **Pipeline commands** — `advance`, `skip`, `review`, `log`, `pipeline`, `inbox`, `next`, `migrate`
+- **Gate enforcement** — structural preconditions for stage transitions, risk-scaled
+- `tk ui` — interactive TUI with list view and pipeline kanban view
 - `tk serve` — MCP server for Claude Code integration
 - `--json` flag on all commands
 
-### Bash
+### Bash (deprecated)
 
-No dependencies beyond coreutils. Works on any POSIX system with bash.
+The original bash script still works for basic operations but does not support the stage pipeline system. New development targets the Go version only.
 
 ```bash
 git clone https://github.com/EnderRealm/ticket.git
 cd ticket && ln -s "$PWD/ticket" ~/.local/bin/tk
 ```
-
-Or just copy the `ticket` script to somewhere in your PATH.
-
-The `query` command requires `jq`. Uses `rg` (ripgrep) if available, falls back to `grep`.
 
 ## Configuration
 
@@ -64,53 +63,76 @@ Claude Opus picks it up naturally from there. Other models may need additional g
 
 ## Usage
 
-```bash
-tk - minimal ticket system with dependency tracking
+Run `tk help` for full command reference. Key commands:
 
-Usage: tk <command> [args]
-
-Commands:
-  create [title] [options] Create ticket (interactive if no title)
-    -d, --description      Description text
-    --design               Design notes
-    --acceptance           Acceptance criteria
-    -t, --type             Type (bug|feature|task|epic|chore) [default: task]
-    -p, --priority         Priority 0-4, 0=highest [default: 2]
-    -a, --assignee         Assignee [default: git user.name]
-    --external-ref         External reference (e.g., gh-123, JIRA-456)
-    --parent               Parent ticket ID
-    --tags                 Comma-separated tags (e.g., --tags ui,backend,urgent)
-  start <id>               Set status to in_progress
-  close <id>               Set status to closed
-  reopen <id>              Set status to open
-  delete <id> [id...]      Delete ticket file(s)
-  status <id> <status>     Update status (open|in_progress|closed)
-  dep <id> <dep-id>        Add dependency (id depends on dep-id)
-  dep tree [--full] <id>   Show dependency tree (--full disables dedup)
-  dep cycle                Find dependency cycles in open tickets
-  undep <id> <dep-id>      Remove dependency
-  link <id> <id> [id...]   Link tickets together (symmetric)
-  unlink <id> <target-id>  Remove link between tickets
-  ls|list [options]        List tickets
-  ready [options]          List actionable tickets (open/in_progress, deps resolved)
-  blocked [options]        List tickets with unresolved deps
-  closed [options]         List recently closed tickets (default 20, by mtime)
-  show <id>                Display ticket
-  edit <id> [options]      Update ticket fields (same flags as create)
-  add-note <id> [text]     Append timestamped note (or pipe via stdin)
-  query [jq-filter]        Output tickets as JSON, optionally filtered
-
-Filter flags (for ls, ready, blocked, closed):
-  -a, --assignee X         Filter by assignee
-  -t, --type X             Filter by type
-  -T, --tag X              Filter by tag
-  -P, --priority X         Filter by priority (0-4)
-  --status X               Filter by status (ls only)
-  --limit N                Limit results (closed only)
-
-Tickets stored as markdown files in .tickets/
-Supports partial ID matching (e.g., 'tk show 5c4' matches 'nw-5c46')
 ```
+Viewing:
+  show <id>                  Display ticket details
+  ls [filters]               List tickets (default: open only)
+  ready [filters]            Unblocked tickets ready to work on
+  blocked [filters]          Tickets with unresolved deps
+  closed [--limit=N]         Recently closed tickets
+
+Creating & Editing:
+  create [title] [options]   Create ticket
+  edit <id> [options]        Update ticket fields
+  add-note <id> [text]       Append timestamped note
+  delete <id> [id...]        Delete ticket(s)
+
+Pipeline:
+  advance <id> [--to stage]  Advance to next pipeline stage
+  skip <id> --to <stage>     Skip ahead with --reason justification
+  review <id> --approve      Record review verdict (--approve or --reject)
+  log <id>                   Show stage/review history
+  pipeline [--stage X]       Show tickets grouped by pipeline stage
+  inbox                      Show tickets needing human attention
+  next                       Per-project next actions
+  migrate [--dry-run]        Migrate legacy tickets to stage pipeline
+
+Dependencies & Links:
+  dep <id> <dep-id>          Add dependency
+  undep <id> <dep-id>        Remove dependency
+  link <id> <id>             Link tickets (symmetric)
+
+Query:
+  query [jq-filter]          Output tickets as JSONL
+
+Analytics:
+  stats                      Project health dashboard
+  timeline [--weeks=N]       Tickets closed by week
+
+Interactive:
+  ui                         Terminal UI (list + pipeline kanban view)
+  serve                      MCP server for AI agent integration
+```
+
+### Pipeline Stages
+
+Tickets progress through type-dependent stage pipelines:
+
+| Type | Pipeline |
+|------|----------|
+| feature | triage → spec → design → implement → test → verify → done |
+| bug | triage → implement → test → verify → done |
+| task | triage → implement → test → verify → done |
+| chore | triage → implement → done |
+| epic | triage → spec → design → done |
+
+Gate checks enforce preconditions at stage transitions (e.g., acceptance criteria before spec → design, review approval before implement → test). Gates scale by risk level: low (advisory), normal (standard), high/critical (strict).
+
+### Filter Flags
+
+```
+--status X        open | in_progress | needs_testing | closed
+-t, --type X      bug | feature | task | epic | chore
+-P, --priority X  0 (critical) through 4 (backlog)
+-a, --assignee X  Filter by assignee
+-T, --tag X       Filter by tag
+--parent X        Children of ticket X
+--group-by X      Group by: workflow | pipeline | type | status | priority
+```
+
+Partial ID matching: `tk show 5c4` matches `nw-5c46`.
 
 ## License
 

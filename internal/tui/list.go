@@ -88,8 +88,8 @@ func (m *listModel) applyFilters() {
 	for _, t := range m.all {
 		// Status tab filter.
 		if statusFilter == "" {
-			// "all" tab: show non-closed.
-			if t.Status == ticket.StatusClosed {
+			// "all" tab: show non-closed/done.
+			if t.Status == ticket.StatusClosed || t.Stage == ticket.StageDone {
 				continue
 			}
 		} else if t.Status != statusFilter {
@@ -247,7 +247,7 @@ func (m listModel) view() string {
 	} else if m.filterText != "" {
 		b.WriteString(filterStyle.Render("filter: " + m.filterText + "  (/ to edit, esc clears)"))
 	} else {
-		help := "↑↓/jk navigate  enter open  tab status  / filter  s status  p priority  c create  q quit"
+		help := "↑↓/jk navigate  enter open  tab status  / filter  s status  p priority  P pipeline  c create  q quit"
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(help))
 	}
 
@@ -257,12 +257,22 @@ func (m listModel) view() string {
 func (m listModel) renderRow(t *ticket.Ticket) string {
 	pStyle := lipgloss.NewStyle().Foreground(priorityColors[t.Priority])
 	tStyle := lipgloss.NewStyle().Foreground(typeColors[t.Type])
-	sStyle := lipgloss.NewStyle().Foreground(statusColors[t.Status])
+
+	// Show stage if available, fall back to status.
+	state := string(t.Status)
+	stateColor := statusColors[t.Status]
+	if t.Stage != "" {
+		state = string(t.Stage)
+		if c, ok := stageColors[t.Stage]; ok {
+			stateColor = c
+		}
+	}
+	sStyle := lipgloss.NewStyle().Foreground(stateColor)
 
 	id := fmt.Sprintf("%-9s", t.ID)
 	pri := pStyle.Render(fmt.Sprintf("P%d", t.Priority))
 	typ := tStyle.Render(fmt.Sprintf("%-11s", t.Type))
-	status := sStyle.Render(fmt.Sprintf("%-14s", t.Status))
+	status := sStyle.Render(fmt.Sprintf("%-14s", state))
 
 	return fmt.Sprintf("%s %s  %s %s %s", id, pri, typ, status, t.Title)
 }

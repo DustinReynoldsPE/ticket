@@ -203,7 +203,18 @@ func (m detailModel) render() []string {
 
 	// Frontmatter fields.
 	lines = append(lines, m.field("id", t.ID))
-	lines = append(lines, m.field("status", string(t.Status)))
+	if t.Stage != "" {
+		lines = append(lines, m.field("stage", string(t.Stage)))
+	}
+	if t.Status != "" {
+		lines = append(lines, m.field("status", string(t.Status)))
+	}
+	if t.Review != "" {
+		lines = append(lines, m.field("review", string(t.Review)))
+	}
+	if t.Risk != "" {
+		lines = append(lines, m.field("risk", string(t.Risk)))
+	}
 	lines = append(lines, m.field("type", string(t.Type)))
 	lines = append(lines, m.field("priority", fmt.Sprintf("P%d", t.Priority)))
 
@@ -239,6 +250,22 @@ func (m detailModel) render() []string {
 				lines = append(lines, line)
 			}
 		}
+	}
+
+	// Review log.
+	if len(t.Reviews) > 0 {
+		lines = append(lines, sectionStyle.Render("## Review Log"))
+		lines = append(lines, "")
+		for _, r := range t.Reviews {
+			verdict := strings.ToUpper(r.Verdict)
+			ts := r.Timestamp.Format("2006-01-02 15:04")
+			entry := fmt.Sprintf("[%s] %s %s", r.Reviewer, verdict, ts)
+			if r.Comment != "" {
+				entry += " — " + r.Comment
+			}
+			lines = append(lines, entry)
+		}
+		lines = append(lines, "")
 	}
 
 	// Notes.
