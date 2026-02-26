@@ -32,6 +32,7 @@
 - **Human-readable ticket IDs** — IDs now use up to 3 meaningful words from the title instead of directory-name prefix (e.g., `fix-login-page-fe32` instead of `tic-fe32`). Existing tickets keep their IDs unchanged.
 - `GenerateID()` now requires a title argument; stop words (articles, prepositions, etc.) are stripped from the slug
 - `Store.Create()` returns an explicit duplicate error instead of relying on hash collision retry
+- `ls` shows dep count (`(2 deps)`) instead of full dep ID list (`<- [t-1234, t-5678]`)
 - Ticket validation accepts either `status` (legacy) or `stage` (pipeline) — dual support for migration
 - format.go writes stage/review/risk/skipped/conversations fields when present
 - `show` checks both status and stage for blocker/blocking display

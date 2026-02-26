@@ -180,8 +180,10 @@ func printHeader() {
 
 func printRow(t *ticket.Ticket) {
 	depStr := ""
-	if len(t.Deps) > 0 {
-		depStr = " <- [" + strings.Join(t.Deps, ", ") + "]"
+	if n := len(t.Deps); n == 1 {
+		depStr = " (1 dep)"
+	} else if n > 1 {
+		depStr = fmt.Sprintf(" (%d deps)", n)
 	}
 
 	// Show stage if available, fall back to status.
