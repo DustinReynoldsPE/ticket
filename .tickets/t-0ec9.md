@@ -1,6 +1,6 @@
 ---
 id: t-0ec9
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-01-25T19:12:09Z
@@ -9,4 +9,5 @@ priority: 4
 assignee: Steve Macbeth
 ---
 # ls: what is the best default ticket list
+
 

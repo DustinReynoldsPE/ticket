@@ -22,6 +22,7 @@ func init() {
 	lsCmd.Flags().String("parent", "", "filter by parent ticket ID")
 	lsCmd.Flags().String("group-by", "", "group by: workflow | type | status | priority")
 	lsCmd.Flags().Bool("group", false, "shorthand for --group-by=workflow")
+	lsCmd.Flags().Bool("flat", false, "flat list (no grouping)")
 
 	rootCmd.AddCommand(lsCmd)
 }
@@ -35,15 +36,17 @@ func runLs(cmd *cobra.Command, args []string) error {
 
 	opts := parseFilterFlags(cmd)
 
+	flat, _ := cmd.Flags().GetBool("flat")
 	groupBy, _ := cmd.Flags().GetString("group-by")
 	if shorthand, _ := cmd.Flags().GetBool("group"); shorthand && groupBy == "" {
 		groupBy = "workflow"
 	}
 
-	if v, _ := cmd.Flags().GetString("status"); v != "" {
-		opts.Status = ticket.Status(v)
-	} else if groupBy == "" {
-		// Default: exclude closed/done.
+	statusFilter, _ := cmd.Flags().GetString("status")
+	if statusFilter != "" {
+		opts.Status = ticket.Status(statusFilter)
+	} else {
+		// No explicit status: exclude closed/done.
 		var filtered []*ticket.Ticket
 		for _, t := range tickets {
 			if t.Status != ticket.StatusClosed && t.Stage != ticket.StageDone {
@@ -51,6 +54,11 @@ func runLs(cmd *cobra.Command, args []string) error {
 			}
 		}
 		tickets = filtered
+	}
+
+	// Default to workflow grouping unless flat or explicit group-by.
+	if groupBy == "" && !flat && statusFilter == "" {
+		groupBy = "workflow"
 	}
 
 	if v, _ := cmd.Flags().GetString("parent"); v != "" {

@@ -19,7 +19,7 @@ Usage: tk <command> [args]
 
 Viewing:
   show <id>                  Display ticket details
-  ls|list [filters]          List tickets (default: open only)
+  ls|list [filters]          List tickets (default: workflow grouped)
   ready [filters]            Tickets with all deps resolved and parent in_progress
   blocked [filters]          Tickets with unresolved deps
   closed [--limit=N] [filters]  Recently closed (default limit: 20)
@@ -85,6 +85,7 @@ Filter flags for ls:
   -T, --tag=X        Filter by tag
   --parent=X         Children of ticket X
   --group-by=X       Group by: workflow | pipeline | type | status | priority
+  --flat             Flat list (no grouping)
 
 Filter flags for ready, blocked, closed:
   -a, --assignee=X   Filter by assignee
