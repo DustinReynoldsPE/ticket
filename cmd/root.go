@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -134,10 +135,26 @@ func Execute() {
 }
 
 // TicketsDir returns the directory where tickets are stored.
-// Respects TICKETS_DIR env var, defaults to ".tickets".
+// Respects TICKETS_DIR env var, then walks up from CWD to find .tickets/,
+// falls back to .tickets in CWD.
 func TicketsDir() string {
 	if dir := os.Getenv("TICKETS_DIR"); dir != "" {
 		return dir
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return ".tickets"
+	}
+	for {
+		candidate := filepath.Join(dir, ".tickets")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
 	}
 	return ".tickets"
 }
