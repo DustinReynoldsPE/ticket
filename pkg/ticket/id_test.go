@@ -6,81 +6,108 @@ import (
 	"time"
 )
 
-var idPattern = regexp.MustCompile(`^[a-z]+-[0-9a-f]{4}$`)
+var idPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*-[0-9a-f]{4}$`)
 
 func TestGenerateIDFrom_Pattern(t *testing.T) {
-	id := GenerateIDFrom("/home/user/my-project", 1234, time.Now())
+	id := GenerateIDFrom("Fix login bug", time.Now())
 	if !idPattern.MatchString(id) {
 		t.Errorf("GenerateIDFrom produced %q, want pattern %s", id, idPattern)
 	}
 }
 
-func TestGenerateIDFrom_HyphenatedDir(t *testing.T) {
-	id := GenerateIDFrom("/home/user/my-cool-project", 1, time.Unix(1000, 0))
-	// "my-cool-project" → segments: my, cool, project → prefix "mcp"
-	if id[:4] != "mcp-" {
-		t.Errorf("prefix = %q, want %q", id[:4], "mcp-")
+func TestGenerateIDFrom_SlugFromTitle(t *testing.T) {
+	id := GenerateIDFrom("Add real words from title", time.Unix(1000, 0))
+	// "Add real words from title" → stop words removed: "add", "real", "words"
+	if len(id) < 4 || id[:len(id)-5] != "add-real-words" {
+		t.Errorf("slug = %q, want prefix %q", id, "add-real-words-")
 	}
 }
 
-func TestGenerateIDFrom_UnderscoredDir(t *testing.T) {
-	id := GenerateIDFrom("/home/user/foo_bar", 1, time.Unix(1000, 0))
-	if id[:3] != "fb-" {
-		t.Errorf("prefix = %q, want %q", id[:3], "fb-")
+func TestGenerateIDFrom_StopWordsRemoved(t *testing.T) {
+	id := GenerateIDFrom("The quick brown fox", time.Unix(1000, 0))
+	// "the" removed, keeps "quick", "brown", "fox"
+	slug := id[:len(id)-5]
+	if slug != "quick-brown-fox" {
+		t.Errorf("slug = %q, want %q", slug, "quick-brown-fox")
 	}
 }
 
-func TestGenerateIDFrom_NoDelimiters(t *testing.T) {
-	id := GenerateIDFrom("/home/user/ticket", 1, time.Unix(1000, 0))
-	// "ticket" has no delimiters → first 3 chars "tic"
-	if id[:4] != "tic-" {
-		t.Errorf("prefix = %q, want %q", id[:4], "tic-")
+func TestGenerateIDFrom_MaxThreeWords(t *testing.T) {
+	id := GenerateIDFrom("implement user authentication system properly", time.Unix(1000, 0))
+	slug := id[:len(id)-5]
+	if slug != "implement-user-authentication" {
+		t.Errorf("slug = %q, want %q", slug, "implement-user-authentication")
 	}
 }
 
-func TestGenerateIDFrom_ShortName(t *testing.T) {
-	id := GenerateIDFrom("/home/user/tk", 1, time.Unix(1000, 0))
-	// "tk" has no delimiters, len < 3 → use full name "tk"
-	if id[:3] != "tk-" {
-		t.Errorf("prefix = %q, want %q", id[:3], "tk-")
+func TestGenerateIDFrom_AllStopWords(t *testing.T) {
+	id := GenerateIDFrom("the a an", time.Unix(1000, 0))
+	slug := id[:len(id)-5]
+	if slug != "ticket" {
+		t.Errorf("slug = %q, want %q for all-stop-word title", slug, "ticket")
 	}
 }
 
-func TestGenerateIDFrom_Deterministic(t *testing.T) {
+func TestGenerateIDFrom_EmptyTitle(t *testing.T) {
+	id := GenerateIDFrom("", time.Unix(1000, 0))
+	slug := id[:len(id)-5]
+	if slug != "ticket" {
+		t.Errorf("slug = %q, want %q for empty title", slug, "ticket")
+	}
+}
+
+func TestGenerateIDFrom_SpecialCharacters(t *testing.T) {
+	id := GenerateIDFrom("Fix bug #123 in auth!", time.Unix(1000, 0))
+	slug := id[:len(id)-5]
+	if slug != "fix-bug-123" {
+		t.Errorf("slug = %q, want %q", slug, "fix-bug-123")
+	}
+}
+
+func TestGenerateIDFrom_SameSlugDifferentHash(t *testing.T) {
 	ts := time.Unix(1700000000, 0)
-	a := GenerateIDFrom("/x/ticket", 42, ts)
-	b := GenerateIDFrom("/x/ticket", 42, ts)
-	if a != b {
-		t.Errorf("same inputs produced different IDs: %q vs %q", a, b)
-	}
-}
-
-func TestGenerateIDFrom_DifferentInputs(t *testing.T) {
-	ts := time.Unix(1700000000, 0)
-	a := GenerateIDFrom("/x/ticket", 42, ts)
-	b := GenerateIDFrom("/x/ticket", 43, ts)
+	a := GenerateIDFrom("Same title", ts)
+	b := GenerateIDFrom("Same title", ts)
+	// Same title and timestamp but monotonic counter ensures different hashes.
 	if a == b {
-		t.Errorf("different PIDs should produce different IDs, both got %q", a)
+		t.Errorf("sequential calls with same inputs should differ due to counter, both got %q", a)
+	}
+	// Slugs should match.
+	if a[:len(a)-5] != b[:len(b)-5] {
+		t.Errorf("slugs should match: %q vs %q", a[:len(a)-5], b[:len(b)-5])
 	}
 }
 
-func TestExtractPrefix(t *testing.T) {
+func TestGenerateIDFrom_DifferentTitles(t *testing.T) {
+	ts := time.Unix(1700000000, 0)
+	a := GenerateIDFrom("First ticket", ts)
+	b := GenerateIDFrom("Second ticket", ts)
+	// Same timestamp but different slugs → different IDs
+	if a == b {
+		t.Errorf("different titles should produce different IDs, both got %q", a)
+	}
+}
+
+func TestSlugifyTitle(t *testing.T) {
 	tests := []struct {
-		name string
-		want string
+		title string
+		want  string
 	}{
-		{"my-project", "mp"},
-		{"my-cool-project", "mcp"},
-		{"foo_bar_baz", "fbb"},
-		{"ticket", "tic"},
-		{"tk", "tk"},
-		{"a-b", "ab"},
-		{"Mixed_And-Delims", "mad"},
+		{"Fix the login bug", "fix-login-bug"},
+		{"Add a new feature", "add-new-feature"},
+		{"the a an is", "ticket"},
+		{"", "ticket"},
+		{"simple", "simple"},
+		{"UPPERCASE TITLE", "uppercase-title"},
+		{"Special!@#chars%^&removed", "special-chars-removed"},
+		{"Use real words from title for id", "use-real-words"},
+		{"Deploy v2.0 to production", "deploy-v2-0"},
+		{"a very long title with many words here", "long-title-many"},
 	}
 	for _, tt := range tests {
-		got := extractPrefix(tt.name)
+		got := slugifyTitle(tt.title)
 		if got != tt.want {
-			t.Errorf("extractPrefix(%q) = %q, want %q", tt.name, got, tt.want)
+			t.Errorf("slugifyTitle(%q) = %q, want %q", tt.title, got, tt.want)
 		}
 	}
 }

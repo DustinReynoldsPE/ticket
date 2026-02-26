@@ -33,14 +33,20 @@ func (s *FileStore) Create(t *Ticket) error {
 		return err
 	}
 
+	// Check for existing ticket with the same ID.
+	path := s.ticketFile(t.ID)
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("ticket %s already exists", t.ID)
+	}
+
+	// Retry on hash collision (different title, same 4-char hash).
 	const maxRetries = 5
 	for i := 0; i < maxRetries; i++ {
-		path := s.ticketFile(t.ID)
+		path = s.ticketFile(t.ID)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			return s.writeTicket(t)
 		}
-		// Collision — regenerate ID and retry.
-		t.ID = GenerateID()
+		t.ID = GenerateID(t.Title)
 	}
 	return fmt.Errorf("ticket ID collision after %d attempts", maxRetries)
 }

@@ -58,14 +58,14 @@ func MoveTicket(src, dst *FileStore, id string, recursive bool) ([]MoveResult, e
 		movingSet[t.ID] = true
 	}
 	for _, t := range toMove {
-		newID := GenerateIDFrom(dstRepo, os.Getpid(), time.Now())
+		newID := GenerateIDFrom(t.Title, time.Now())
 		// Ensure no collision in target.
 		for i := 0; i < 5; i++ {
 			path := filepath.Join(dst.Dir, newID+".md")
 			if _, err := os.Stat(path); os.IsNotExist(err) {
 				break
 			}
-			newID = GenerateIDFrom(dstRepo, os.Getpid(), time.Now())
+			newID = GenerateIDFrom(t.Title, time.Now())
 		}
 		idMap[t.ID] = newID
 	}

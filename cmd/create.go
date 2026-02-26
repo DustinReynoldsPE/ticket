@@ -78,7 +78,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	id := ticket.GenerateID()
+	id := ticket.GenerateID(title)
 
 	var body strings.Builder
 	if description != "" {

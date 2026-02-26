@@ -3,71 +3,90 @@ package ticket
 import (
 	"crypto/sha256"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 )
 
 // idCounter provides per-process monotonic noise so that multiple IDs
 // generated within the same nanosecond still differ.
 var idCounter atomic.Uint64
 
-// GenerateID creates a ticket ID from the current directory name and a hash.
-// Format: prefix-hash where prefix is first letter of each hyphen/underscore
-// segment of the directory name, and hash is 4 hex chars derived from PID +
-// timestamp.
-func GenerateID() string {
-	return GenerateIDFrom(currentDir(), os.Getpid(), time.Now())
+// stopWords are common filler words stripped from titles when generating slugs.
+var stopWords = map[string]bool{
+	"a": true, "an": true, "the": true, "is": true, "are": true,
+	"was": true, "were": true, "be": true, "been": true, "being": true,
+	"have": true, "has": true, "had": true, "do": true, "does": true,
+	"did": true, "will": true, "would": true, "shall": true, "should": true,
+	"may": true, "might": true, "must": true, "can": true, "could": true,
+	"of": true, "in": true, "to": true, "for": true, "on": true,
+	"at": true, "by": true, "with": true, "from": true, "as": true,
+	"into": true, "through": true, "about": true, "between": true,
+	"after": true, "before": true, "above": true, "below": true,
+	"up": true, "down": true, "out": true, "off": true, "over": true,
+	"under": true, "and": true, "but": true, "or": true, "nor": true,
+	"not": true, "no": true, "so": true, "yet": true, "both": true,
+	"either": true, "neither": true, "each": true, "every": true,
+	"all": true, "any": true, "few": true, "more": true, "most": true,
+	"some": true, "such": true, "than": true, "too": true, "very": true,
+	"it": true, "its": true, "this": true, "that": true, "these": true,
+	"those": true, "what": true, "which": true, "who": true, "whom": true,
+	"how": true, "when": true, "where": true, "why": true,
+}
+
+// GenerateID creates a ticket ID from the title and a hash.
+// Format: slug-hash where slug is up to 3 meaningful words from the title,
+// and hash is 4 hex chars derived from PID + timestamp.
+func GenerateID(title string) string {
+	return GenerateIDFrom(title, time.Now())
 }
 
 // GenerateIDFrom creates a ticket ID from explicit inputs (testable).
-func GenerateIDFrom(dirPath string, pid int, t time.Time) string {
-	dirName := filepath.Base(dirPath)
-	prefix := extractPrefix(dirName)
-	hash := idHash(pid, t)
-	return prefix + "-" + hash
+func GenerateIDFrom(title string, t time.Time) string {
+	slug := slugifyTitle(title)
+	hash := idHash(t)
+	return slug + "-" + hash
 }
 
-// extractPrefix takes the first letter of each hyphen/underscore-delimited
-// segment. Falls back to first 3 chars if there are no delimiters.
-func extractPrefix(name string) string {
-	// Replace hyphens and underscores with spaces, then split.
-	normalized := strings.NewReplacer("-", " ", "_", " ").Replace(name)
-	fields := strings.Fields(normalized)
-
-	if len(fields) <= 1 {
-		// No delimiters found — use first 3 chars.
-		if len(name) > 3 {
-			return strings.ToLower(name[:3])
-		}
-		return strings.ToLower(name)
-	}
-
+// slugifyTitle extracts up to 3 meaningful words from the title,
+// stripping stop words and non-alphanumeric characters.
+func slugifyTitle(title string) string {
+	// Lowercase and replace non-alphanumeric with spaces.
 	var b strings.Builder
-	for _, f := range fields {
-		if len(f) > 0 {
-			b.WriteByte(f[0])
+	for _, r := range strings.ToLower(title) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte(' ')
 		}
 	}
-	return strings.ToLower(b.String())
+
+	words := strings.Fields(b.String())
+
+	var slug []string
+	for _, w := range words {
+		if stopWords[w] {
+			continue
+		}
+		slug = append(slug, w)
+		if len(slug) >= 3 {
+			break
+		}
+	}
+
+	if len(slug) == 0 {
+		return "ticket"
+	}
+	return strings.Join(slug, "-")
 }
 
-// idHash returns 4 hex chars from sha256 of pid + nanosecond timestamp +
+// idHash returns 4 hex chars from sha256 of nanosecond timestamp +
 // monotonic counter. The counter prevents collisions when multiple IDs are
 // generated within the same nanosecond.
-func idHash(pid int, t time.Time) string {
+func idHash(t time.Time) string {
 	seq := idCounter.Add(1)
-	data := fmt.Sprintf("%d%d%d", pid, t.UnixNano(), seq)
+	data := fmt.Sprintf("%d%d", t.UnixNano(), seq)
 	sum := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%x", sum[:2]) // 2 bytes = 4 hex chars
-}
-
-func currentDir() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return dir
 }
