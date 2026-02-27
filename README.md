@@ -171,6 +171,28 @@ Partial ID matching: `tk show 5c4` matches `nw-5c46`.
 
 Required repository secrets: `GITHUB_TOKEN`, `TAP_GITHUB_TOKEN`.
 
+### Monitoring & Debugging Releases
+
+```bash
+# Watch the release workflow
+gh run list --limit 1
+gh run watch <run-id> --exit-status
+
+# If it fails, check logs
+gh run view --log-failed
+
+# If assets were partially uploaded (rerun fails with "already_exists"),
+# delete the draft release and retry
+gh release delete v2.1.0 --yes
+gh run rerun --failed
+```
+
+`TAP_GITHUB_TOKEN` is a fine-grained PAT with Contents (read & write) permission on `EnderRealm/homebrew-tools`. If it expires, the Homebrew step will fail with a 401. Regenerate and update:
+
+```bash
+gh secret set TAP_GITHUB_TOKEN
+```
+
 ## License
 
 MIT
