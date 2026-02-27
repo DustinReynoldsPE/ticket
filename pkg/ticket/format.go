@@ -249,19 +249,19 @@ func parseNotes(section string) []Note {
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "**") && strings.HasSuffix(line, "**") {
-			// Flush previous note.
-			if current != nil {
-				current.Text = strings.TrimSpace(current.Text)
-				notes = append(notes, *current)
-			}
 			tsStr := strings.Trim(line, "*")
 			ts, err := time.Parse(time.RFC3339, tsStr)
 			if err != nil {
-				// If timestamp doesn't parse, treat as body text.
+				// Not a timestamp — treat as body text.
 				if current != nil {
 					current.Text += line + "\n"
 				}
 				continue
+			}
+			// Valid timestamp: flush previous note and start a new one.
+			if current != nil {
+				current.Text = strings.TrimSpace(current.Text)
+				notes = append(notes, *current)
 			}
 			current = &Note{Timestamp: ts}
 		} else if current != nil {

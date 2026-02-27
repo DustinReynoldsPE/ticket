@@ -67,6 +67,126 @@ func TestCreateTicket(t *testing.T) {
 	}
 }
 
+func TestAddNotePreservesNewlines(t *testing.T) {
+	session := testServer(t)
+	ctx := context.Background()
+
+	// Create a ticket.
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_create",
+		Arguments: map[string]any{"title": "Note test", "type": "task"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	var created map[string]any
+	json.Unmarshal([]byte(text), &created)
+	id := created["id"].(string)
+
+	// Add a note with double newlines.
+	noteText := "## Triage\n\n**Risk:** low\n\n**Scope:** single task"
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_add_note",
+		Arguments: map[string]any{"id": id, "text": noteText},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("add_note error: %v", result.Content)
+	}
+
+	// Read the ticket back and check notes.
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = result.Content[0].(*mcp.TextContent).Text
+	var shown map[string]any
+	json.Unmarshal([]byte(text), &shown)
+
+	notes, ok := shown["notes"].([]any)
+	if !ok {
+		t.Fatalf("notes is not an array: %T", shown["notes"])
+	}
+	if len(notes) != 1 {
+		t.Errorf("expected 1 note, got %d", len(notes))
+		for i, n := range notes {
+			note := n.(map[string]any)
+			t.Logf("  note[%d]: %q", i, note["text"])
+		}
+	}
+	if len(notes) > 0 {
+		note := notes[0].(map[string]any)
+		if note["text"] != noteText {
+			t.Errorf("note text = %q, want %q", note["text"], noteText)
+		}
+	}
+}
+
+func TestAddMultipleNotes(t *testing.T) {
+	session := testServer(t)
+	ctx := context.Background()
+
+	// Create a ticket.
+	result, _ := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_create",
+		Arguments: map[string]any{"title": "Multi note test", "type": "task"},
+	})
+	text := result.Content[0].(*mcp.TextContent).Text
+	var created map[string]any
+	json.Unmarshal([]byte(text), &created)
+	id := created["id"].(string)
+
+	// Add first note with ## headings and blank lines.
+	note1 := "## Triage\n\n**Risk:** low\n\n**Scope:** single task\n\n**Key decisions:**\n- Decision one (human)\n- Decision two (human)"
+	session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_add_note",
+		Arguments: map[string]any{"id": id, "text": note1},
+	})
+
+	// Add second note.
+	note2 := "## Spec\n\n**Scope:**\n- In: feature A\n- Out: feature B"
+	session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_add_note",
+		Arguments: map[string]any{"id": id, "text": note2},
+	})
+
+	// Read back.
+	result, _ = session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	text = result.Content[0].(*mcp.TextContent).Text
+	var shown map[string]any
+	json.Unmarshal([]byte(text), &shown)
+
+	notes, _ := shown["notes"].([]any)
+	if len(notes) != 2 {
+		t.Errorf("expected 2 notes, got %d", len(notes))
+		for i, n := range notes {
+			note := n.(map[string]any)
+			t.Logf("  note[%d]: %q", i, note["text"])
+		}
+	}
+	if len(notes) >= 1 {
+		n := notes[0].(map[string]any)
+		if n["text"] != note1 {
+			t.Errorf("note[0] text mismatch\ngot:  %q\nwant: %q", n["text"], note1)
+		}
+	}
+	if len(notes) >= 2 {
+		n := notes[1].(map[string]any)
+		if n["text"] != note2 {
+			t.Errorf("note[1] text mismatch\ngot:  %q\nwant: %q", n["text"], note2)
+		}
+	}
+}
+
 func TestCreateTicketMissingTitle(t *testing.T) {
 	session := testServer(t)
 

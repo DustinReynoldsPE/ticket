@@ -7,6 +7,7 @@
 
 ### Fixed
 - MCP `ticket_create` failed with "ticket ID is required" — handler was missing ID generation, status, and stage initialization
+- Notes with `**bold**` markdown lines were split into multiple notes during parsing — `parseNotes` now validates timestamp before flushing
 
 ## [2.1.1] - 2026-02-26
 
