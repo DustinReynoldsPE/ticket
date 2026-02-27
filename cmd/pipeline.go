@@ -60,6 +60,11 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 		grouped[stage] = append(grouped[stage], t)
 	}
 
+	if len(grouped) == 0 {
+		printEmptyMessage()
+		return nil
+	}
+
 	first := true
 	for _, stage := range stages {
 		group := grouped[stage]

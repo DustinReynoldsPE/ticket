@@ -36,8 +36,13 @@ func runReady(cmd *cobra.Command, args []string) error {
 
 	opts := parseFilterFlags(cmd)
 	tickets = ticket.Filter(tickets, opts)
-	ticket.SortByPriorityID(tickets)
 
+	if len(tickets) == 0 {
+		printEmptyMessage()
+		return nil
+	}
+
+	ticket.SortByPriorityID(tickets)
 	printHeader()
 	for _, t := range tickets {
 		printRow(t)

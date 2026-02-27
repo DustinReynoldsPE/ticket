@@ -25,7 +25,7 @@ func runInbox(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(items) == 0 {
-		fmt.Println("Inbox empty — nothing needs human attention.")
+		printEmptyMessage()
 		return nil
 	}
 

@@ -64,6 +64,11 @@ func runClosed(cmd *cobra.Command, args []string) error {
 		mt = mt[:limit]
 	}
 
+	if len(mt) == 0 {
+		printEmptyMessage()
+		return nil
+	}
+
 	printHeader()
 	for _, m := range mt {
 		printRow(m.ticket)

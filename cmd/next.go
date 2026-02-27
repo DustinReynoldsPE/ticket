@@ -25,7 +25,7 @@ func runNext(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(projects) == 0 {
-		fmt.Println("No active projects.")
+		printEmptyMessage()
 		return nil
 	}
 

@@ -67,6 +67,11 @@ func runLs(cmd *cobra.Command, args []string) error {
 
 	tickets = ticket.Filter(tickets, opts)
 
+	if len(tickets) == 0 {
+		printEmptyMessage()
+		return nil
+	}
+
 	if groupBy != "" {
 		return printGrouped(store, tickets, groupBy)
 	}
