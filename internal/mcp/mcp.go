@@ -201,7 +201,7 @@ func errResult(format string, a ...any) (*mcp.CallToolResult, error) {
 type listArgs struct {
 	Status   string `json:"status,omitempty" jsonschema:"filter by status: open, in_progress, needs_testing, closed"`
 	Type     string `json:"type,omitempty" jsonschema:"filter by type: bug, feature, task, epic, chore"`
-	Priority int    `json:"priority,omitempty" jsonschema:"filter by priority (0-4, -1 for no filter)"`
+	Priority *int   `json:"priority,omitempty" jsonschema:"filter by priority (0-4)"`
 	Assignee string `json:"assignee,omitempty" jsonschema:"filter by assignee name"`
 	Tag      string `json:"tag,omitempty" jsonschema:"filter by tag"`
 	Parent   string `json:"parent,omitempty" jsonschema:"filter by parent ticket ID"`
@@ -233,8 +233,8 @@ func registerList(server *mcp.Server, store *ticket.FileStore) {
 		if args.Type != "" {
 			opts.Type = ticket.TicketType(args.Type)
 		}
-		if args.Priority >= 0 {
-			opts.Priority = args.Priority
+		if args.Priority != nil {
+			opts.Priority = *args.Priority
 		}
 		if args.Assignee != "" {
 			opts.Assignee = args.Assignee
@@ -285,7 +285,7 @@ type createArgs struct {
 	Design      string `json:"design,omitempty" jsonschema:"design notes"`
 	Acceptance  string `json:"acceptance,omitempty" jsonschema:"acceptance criteria"`
 	Type        string `json:"type,omitempty" jsonschema:"ticket type: bug, feature, task, epic, chore (default: task)"`
-	Priority    int    `json:"priority,omitempty" jsonschema:"priority 0-4, 0=highest (default: 2)"`
+	Priority    *int   `json:"priority,omitempty" jsonschema:"priority 0-4, 0=highest (default: 2)"`
 	Assignee    string `json:"assignee,omitempty" jsonschema:"assignee name"`
 	Parent      string `json:"parent,omitempty" jsonschema:"parent ticket ID"`
 	Tags        string `json:"tags,omitempty" jsonschema:"comma-separated tags"`
@@ -307,8 +307,8 @@ func registerCreate(server *mcp.Server, store *ticket.FileStore) {
 		} else {
 			t.Type = ticket.TypeTask
 		}
-		if args.Priority > 0 || args.Priority == 0 {
-			t.Priority = args.Priority
+		if args.Priority != nil {
+			t.Priority = *args.Priority
 		}
 		if args.Assignee != "" {
 			t.Assignee = args.Assignee
