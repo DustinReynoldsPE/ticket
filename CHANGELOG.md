@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.2.0] - 2026-02-27
 
 ### Added
 - Encouraging messages on empty listing output — ls, ready, blocked, inbox, closed, pipeline, and next show a random message from a pool of 20 when results are empty. `--json` returns `[]`.
