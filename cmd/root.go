@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
@@ -121,11 +122,39 @@ Tickets stored as markdown in .tickets/`
 // Version is set via -ldflags at build time.
 var Version = "dev"
 
+func version() string {
+	if Version != "dev" {
+		return Version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return Version
+	}
+	var revision, dirty string
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value
+		case "vcs.modified":
+			if s.Value == "true" {
+				dirty = ", dirty"
+			}
+		}
+	}
+	if revision == "" {
+		return Version
+	}
+	if len(revision) > 7 {
+		revision = revision[:7]
+	}
+	return fmt.Sprintf("dev (%s%s)", revision, dirty)
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "tk",
 	Short:   "A markdown-based ticket manager",
 	Long:    helpText,
-	Version: Version,
+	Version: version(),
 }
 
 func init() {
