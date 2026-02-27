@@ -1,7 +1,7 @@
 ---
 id: mcp-check-create-abb4
-stage: triage
-status: open
+stage: done
+status: closed
 deps: []
 links: []
 created: 2026-02-27T00:36:38Z

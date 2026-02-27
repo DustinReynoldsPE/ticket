@@ -12,12 +12,6 @@ Tickets are markdown files with YAML frontmatter in `.tickets/`. This allows AI 
 brew install EnderRealm/tools/ticket
 ```
 
-### AUR (Arch Linux)
-
-```bash
-yay -S ticket
-```
-
 ### From source
 
 Requires Go 1.25+.
@@ -174,9 +168,8 @@ Partial ID matching: `tk show 5c4` matches `nw-5c46`.
 3. GitHub Actions handles the rest:
    - **GoReleaser** builds darwin/linux binaries (amd64 + arm64)
    - **Homebrew** tap updated in `EnderRealm/homebrew-tools`
-   - **AUR** package rebuilt with new checksums
 
-Required repository secrets: `GITHUB_TOKEN`, `TAP_GITHUB_TOKEN`, `AUR_SSH_KEY`.
+Required repository secrets: `GITHUB_TOKEN`, `TAP_GITHUB_TOKEN`.
 
 ## License
 
