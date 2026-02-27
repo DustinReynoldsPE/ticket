@@ -297,8 +297,16 @@ func registerCreate(server *mcp.Server, store *ticket.FileStore) {
 		Name:        "ticket_create",
 		Description: "Create a new ticket.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args createArgs) (*mcp.CallToolResult, any, error) {
+		if args.Title == "" {
+			r, _ := errResult("title is required")
+			return r, nil, nil
+		}
+
 		t := &ticket.Ticket{
+			ID:       ticket.GenerateID(args.Title),
 			Title:    args.Title,
+			Status:   ticket.StatusOpen,
+			Stage:    ticket.StageTriage,
 			Priority: 2,
 		}
 

@@ -12,22 +12,6 @@ tags: [ux]
 ---
 # Show encouraging message on empty listing output
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 When any listing command (ls, ready, blocked, inbox, closed, pipeline, next) returns zero results, display a random encouraging message instead of empty output. Rotate between ~20 messages using a shared function.
 
 ## Acceptance Criteria
