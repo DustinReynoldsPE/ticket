@@ -4,43 +4,51 @@
 'tk' is a CLI tool on PATH for task management. This project uses tickets to persistently manage all work items. Run 'tk help' for available commands and syntax. Tickets live in '.tickets/'.
 
 When adding/changing commands or flags, update:
-1. The `cmd_help()` function in `ticket`
+1. The help text in `cmd/root.go`
 2. The Usage section in `README.md`
 
 ## Architecture
 
-Single-file bash implementation (`ticket`, ~1400 lines). Uses awk for performant bulk operations on large ticket sets.
+Go binary. Four layers sharing one core library:
 
-Key functions:
-- `generate_id()` - Creates IDs from directory name prefix + timestamp hash
-- `ticket_path()` - Resolves partial IDs to full file paths
-- `yaml_field()` / `update_yaml_field()` - YAML frontmatter manipulation via sed
-- `cmd_*()` - Command handlers (dispatch at bottom of file)
-- `cmd_ready()`, `cmd_blocked()`, `cmd_ls()` - awk-based bulk listing with sorting
+- `pkg/ticket/` — Core library (types, store, format, deps, filter, id, workflow, pipeline, gates)
+- `cmd/` — CLI commands via cobra
+- `internal/tui/` — Bubbletea TUI for interactive browse and edit
+- `internal/mcp/` — MCP server for AI agent access via `tk serve`
 
-Tickets are markdown files with YAML frontmatter in `.tickets/` (configurable via `TICKETS_DIR` env var). Core YAML fields: `id`, `status`, `deps`, `links`, `created`, `type`, `priority`, `assignee`, `parent`, `tags`.
-
-Dependencies: bash, sed, awk, find. Optional: ripgrep (faster grep), jq (for query command).
+Tickets are markdown files with YAML frontmatter in `.tickets/` (configurable via `TICKETS_DIR` env var). Core YAML fields: `id`, `status`, `stage`, `deps`, `links`, `created`, `type`, `priority`, `assignee`, `parent`, `tags`, `review`, `risk`.
 
 ## Testing
 
-No formal test suite. Manual testing workflow:
 ```bash
-# Create test tickets
-tk create "Test ticket" -d "Description"
+# Run all tests
+go test ./...
 
-# Verify commands
-tk ls
-tk ready
-tk blocked
+# Run specific package
+go test ./pkg/ticket/
+go test ./internal/mcp/
 ```
+
+### MCP testing
+
+MCP tools are tested in-process using the go-sdk's `NewInMemoryTransports`. The test harness in `internal/mcp/mcp_test.go` provides a `testServer(t)` helper that returns a connected `*mcp.ClientSession` backed by a temp directory. Use it to call any MCP tool without stdio:
+
+```go
+session := testServer(t)
+result, err := session.CallTool(ctx, &mcp.CallToolParams{
+    Name:      "ticket_create",
+    Arguments: map[string]any{"title": "Test", "type": "task"},
+})
+```
+
+Do not replace the installed `tk` binary for testing — this machine runs MCP servers for other agents. Always use the in-process harness.
 
 ## Changelog
 
-When committing notable changes to the `ticket` script (new commands, flags, bug fixes, behavior changes), update CHANGELOG.md in the same commit:
+When committing notable changes (new commands, flags, bug fixes, behavior changes), update CHANGELOG.md in the same commit:
 - Create `## [Unreleased]` section at top if it doesn't exist
 - Add bullet points under appropriate heading (Added, Fixed, Changed, Removed)
-- Only script changes need logging; docs/workflow changes don't
+- Only code changes need logging; docs/workflow changes don't
 
 ## Releases & Packaging
 
@@ -50,17 +58,9 @@ Before tagging a release:
 3. Commit the changelog update as part of the release
 
 ```bash
-# Example release flow
-# 1. Update CHANGELOG.md: change "## [0.3.0] - Unreleased" to "## [0.3.0] - 2026-01-15"
-# 2. Commit and tag
-git commit -am "release: v0.3.0"
-git tag v0.3.0
-git push && git push origin v0.3.0
+git commit -am "release: v2.2.0"
+git tag v2.2.0
+git push && git push origin v2.2.0
 ```
 
-The GitHub Actions workflow (`.github/workflows/release.yml`) automatically:
-1. Extracts the changelog section for this version as the release body
-2. Updates the Homebrew formula in `wedow/homebrew-tools` tap
-3. Updates the AUR package (builds `.SRCINFO` via Docker)
-
-Both package managers install the script as `tk` in the user's PATH.
+GitHub Actions automatically builds binaries via GoReleaser and updates the Homebrew formula in `EnderRealm/homebrew-tools`.

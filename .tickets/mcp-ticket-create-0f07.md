@@ -1,6 +1,6 @@
 ---
 id: mcp-ticket-create-0f07
-stage: implement
+stage: done
 status: open
 deps: []
 links: []
@@ -15,7 +15,30 @@ tags: [mcp]
 
 
 
+
+
+
+
+
+
 The ticket_create MCP tool fails with 'create: ticket ID is required' when called with a title. The title parameter is not being passed through correctly to the create command. Workaround: use the tk CLI directly.
+
+## Test Results
+
+- [x] TestCreateTicket: ticket created via MCP with ID, status=open, stage=triage
+- [x] TestCreateTicketMissingTitle: SDK rejects missing title
+- [x] go test ./... passes
+
+## Review Log
+
+**2026-02-27T07:50:34Z [agent:code-review]**
+APPROVED — 3-line fix mirrors CLI create behavior exactly. Added title validation guard.
+
+**2026-02-27T07:50:38Z [agent:impl-review]**
+APPROVED — Fix sets ID, Status, Stage matching cmd/create.go. Root cause addressed.
+
+**2026-02-27T07:59:13Z [human:steve]**
+APPROVED — Verified via in-process MCP test harness. CLAUDE.md updated with testing instructions.
 
 ## Notes
 
