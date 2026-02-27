@@ -411,6 +411,16 @@ func registerEdit(server *mcp.Server, store *ticket.FileStore) {
 			}
 		}
 
+		if args.Description != "" {
+			t.Body = ticket.UpdateSection(t.Body, "", args.Description)
+		}
+		if args.Design != "" {
+			t.Body = ticket.UpdateSection(t.Body, "Design", args.Design)
+		}
+		if args.Acceptance != "" {
+			t.Body = ticket.UpdateSection(t.Body, "Acceptance Criteria", args.Acceptance)
+		}
+
 		if err := store.Update(t); err != nil {
 			r, _ := errResult("failed to update ticket: %v", err)
 			return r, nil, nil

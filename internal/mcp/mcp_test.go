@@ -187,6 +187,63 @@ func TestAddMultipleNotes(t *testing.T) {
 	}
 }
 
+func TestEditBodyFields(t *testing.T) {
+	session := testServer(t)
+	ctx := context.Background()
+
+	// Create a ticket.
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_create",
+		Arguments: map[string]any{"title": "Edit body test", "type": "feature"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	var created map[string]any
+	json.Unmarshal([]byte(text), &created)
+	id := created["id"].(string)
+
+	// Edit with description, design, and acceptance.
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "ticket_edit",
+		Arguments: map[string]any{
+			"id":          id,
+			"description": "Updated description text",
+			"design":      "The design plan",
+			"acceptance":  "When X, the system shall Y",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("edit error: %v", result.Content)
+	}
+
+	// Read back and verify all three fields persisted.
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = result.Content[0].(*mcp.TextContent).Text
+	var shown map[string]any
+	json.Unmarshal([]byte(text), &shown)
+
+	if shown["description"] != "Updated description text" {
+		t.Errorf("description = %q, want %q", shown["description"], "Updated description text")
+	}
+	if shown["design"] != "The design plan" {
+		t.Errorf("design = %q, want %q", shown["design"], "The design plan")
+	}
+	if shown["acceptance_criteria"] != "When X, the system shall Y" {
+		t.Errorf("acceptance = %q, want %q", shown["acceptance_criteria"], "When X, the system shall Y")
+	}
+}
+
 func TestCreateTicketMissingTitle(t *testing.T) {
 	session := testServer(t)
 

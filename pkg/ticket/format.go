@@ -326,6 +326,37 @@ func parseReviewLog(section string) []ReviewRecord {
 	return reviews
 }
 
+// UpdateSection replaces or inserts a markdown section in the body.
+// If heading is empty, replaces the description (text before first ## heading).
+func UpdateSection(body, heading, content string) string {
+	if heading == "" {
+		idx := strings.Index(body, "\n## ")
+		if idx >= 0 {
+			return "\n" + content + "\n" + body[idx:]
+		}
+		return "\n" + content + "\n"
+	}
+
+	marker := "## " + heading
+	idx := strings.Index(body, marker)
+	if idx >= 0 {
+		rest := body[idx+len(marker):]
+		nextSection := strings.Index(rest, "\n## ")
+		var after string
+		if nextSection >= 0 {
+			after = rest[nextSection:]
+		}
+		return body[:idx] + marker + "\n\n" + content + "\n" + after
+	}
+
+	// Section doesn't exist — append before Notes if present, else at end.
+	notesIdx := strings.Index(body, "\n## Notes")
+	if notesIdx >= 0 {
+		return body[:notesIdx] + "\n" + marker + "\n\n" + content + "\n" + body[notesIdx:]
+	}
+	return body + "\n" + marker + "\n\n" + content + "\n"
+}
+
 func writeField(buf *bytes.Buffer, key, value string) {
 	buf.WriteString(key + ": " + value + "\n")
 }
