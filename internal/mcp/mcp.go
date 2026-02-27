@@ -62,6 +62,7 @@ type ticketJSON struct {
 	Description   string       `json:"description,omitempty"`
 	Design        string       `json:"design,omitempty"`
 	Acceptance    string       `json:"acceptance_criteria,omitempty"`
+	TestResults   string       `json:"test_results,omitempty"`
 	Notes         []noteJSON   `json:"notes,omitempty"`
 	Reviews       []reviewJSON `json:"reviews,omitempty"`
 }
@@ -106,7 +107,7 @@ func toJSON(t *ticket.Ticket) ticketJSON {
 	// Extract body sections.
 	body := t.Body
 	if body != "" {
-		j.Description, j.Design, j.Acceptance = parseSections(body)
+		j.Description, j.Design, j.Acceptance, j.TestResults = parseSections(body)
 	}
 
 	for _, n := range t.Notes {
@@ -136,7 +137,7 @@ func nonNil(s []string) []string {
 	return s
 }
 
-func parseSections(body string) (desc, design, acceptance string) {
+func parseSections(body string) (desc, design, acceptance, testResults string) {
 	lines := strings.Split(body, "\n")
 	var current *string
 	var buf []string
@@ -159,6 +160,9 @@ func parseSections(body string) (desc, design, acceptance string) {
 		case strings.HasPrefix(line, "## Acceptance"):
 			flush()
 			current = &acceptance
+		case strings.HasPrefix(line, "## Test Results"):
+			flush()
+			current = &testResults
 		case strings.HasPrefix(line, "## "):
 			// Other section - stop capturing known sections.
 			flush()
@@ -370,6 +374,7 @@ type editArgs struct {
 	Description string `json:"description,omitempty" jsonschema:"new description text"`
 	Design      string `json:"design,omitempty" jsonschema:"new design text"`
 	Acceptance  string `json:"acceptance,omitempty" jsonschema:"new acceptance criteria"`
+	TestResults string `json:"test_results,omitempty" jsonschema:"test results to record"`
 }
 
 func registerEdit(server *mcp.Server, store *ticket.FileStore) {
@@ -419,6 +424,9 @@ func registerEdit(server *mcp.Server, store *ticket.FileStore) {
 		}
 		if args.Acceptance != "" {
 			t.Body = ticket.UpdateSection(t.Body, "Acceptance Criteria", args.Acceptance)
+		}
+		if args.TestResults != "" {
+			t.Body = ticket.UpdateSection(t.Body, "Test Results", args.TestResults)
 		}
 
 		if err := store.Update(t); err != nil {

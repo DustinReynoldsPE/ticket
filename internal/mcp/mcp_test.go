@@ -242,6 +242,43 @@ func TestEditBodyFields(t *testing.T) {
 	if shown["acceptance_criteria"] != "When X, the system shall Y" {
 		t.Errorf("acceptance = %q, want %q", shown["acceptance_criteria"], "When X, the system shall Y")
 	}
+
+	// Edit with test_results.
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "ticket_edit",
+		Arguments: map[string]any{
+			"id":           id,
+			"test_results": "- [x] All tests pass\n- [x] No regressions",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("edit test_results error: %v", result.Content)
+	}
+
+	// Read back and verify test_results persisted alongside other fields.
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = result.Content[0].(*mcp.TextContent).Text
+	json.Unmarshal([]byte(text), &shown)
+
+	if shown["test_results"] != "- [x] All tests pass\n- [x] No regressions" {
+		t.Errorf("test_results = %q, want %q", shown["test_results"], "- [x] All tests pass\n- [x] No regressions")
+	}
+	// Verify earlier fields weren't clobbered.
+	if shown["description"] != "Updated description text" {
+		t.Errorf("description clobbered: %q", shown["description"])
+	}
+	if shown["design"] != "The design plan" {
+		t.Errorf("design clobbered: %q", shown["design"])
+	}
 }
 
 func TestCreateTicketMissingTitle(t *testing.T) {

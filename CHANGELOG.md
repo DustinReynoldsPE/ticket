@@ -9,6 +9,7 @@
 - MCP `ticket_create` failed with "ticket ID is required" — handler was missing ID generation, status, and stage initialization
 - Notes with `**bold**` markdown lines were split into multiple notes during parsing — `parseNotes` now validates timestamp before flushing
 - MCP `ticket_edit` silently dropped description, design, and acceptance fields — handler now uses `UpdateSection` to persist body fields
+- MCP gate checks required body sections unreachable via `ticket_edit` — added `test_results` field and exposed `## Test Results` in show output
 
 ## [2.1.1] - 2026-02-26
 
