@@ -24,7 +24,7 @@ checksum:
 changelog:
   use: github-native
 
-homebrew_casks:
+brews:
   - repository:
       owner: EnderRealm
       name: homebrew-tools
@@ -32,3 +32,5 @@ homebrew_casks:
     name: ticket
     homepage: "https://github.com/EnderRealm/ticket"
     description: "Markdown-based ticket management CLI"
+    install: |
+      bin.install "tk"

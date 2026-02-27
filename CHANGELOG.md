@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.1] - 2026-02-26
+
+### Fixed
+- Homebrew install — use formula (`brews`) instead of cask (`homebrew_casks`) in GoReleaser config
+
 ## [2.1.0] - 2026-02-26
 
 ### Added
