@@ -4,43 +4,49 @@ A git-backed issue tracker for AI agents. Rooted in the Unix Philosophy, `tk` is
 
 Tickets are markdown files with YAML frontmatter in `.tickets/`. This allows AI agents to easily search them for relevant content without dumping ten thousand character JSONL lines into their context window.
 
-Using ticket IDs as file names also allows IDEs to quickly navigate to the ticket. For example, you might run `git log` in your terminal and see something like:
-
-```
-nw-5c46: add SSE connection management
-```
-
-VS Code allows you to Ctrl+Click or Cmd+Click the ID and jump directly to the file to read the details.
-
 ## Install
 
-There are two implementations: a Go binary and the original bash script. Both are fully compatible — they read and write the same ticket format.
-
-### Go (recommended)
-
-Requires Go 1.21+.
+### Homebrew (macOS / Linux)
 
 ```bash
-git clone https://github.com/EnderRealm/ticket.git
-cd ticket && go build -o ~/.local/bin/tk .
+brew install EnderRealm/tools/ticket
 ```
 
-The Go version includes everything in the bash version plus:
-- **Stage pipeline** — type-dependent stage pipelines (triage → spec → design → implement → test → verify → done)
-- **Pipeline commands** — `advance`, `skip`, `review`, `log`, `pipeline`, `inbox`, `next`, `migrate`
-- **Gate enforcement** — structural preconditions for stage transitions, risk-scaled
-- `tk ui` — interactive TUI with list view and pipeline kanban view
-- `tk serve` — MCP server for Claude Code integration
-- `--json` flag on all commands
-- `--repo <path>` — operate on any repo from anywhere
+### AUR (Arch Linux)
 
-### Bash (deprecated)
+```bash
+yay -S ticket
+```
 
-The original bash script still works for basic operations but does not support the stage pipeline system. New development targets the Go version only.
+### From source
+
+Requires Go 1.25+.
 
 ```bash
 git clone https://github.com/EnderRealm/ticket.git
-cd ticket && ln -s "$PWD/ticket" ~/.local/bin/tk
+cd ticket
+go build -o ~/.local/bin/tk .
+```
+
+## Build
+
+Local development:
+
+```bash
+go build -o tk .
+```
+
+Release builds inject the version via ldflags:
+
+```bash
+go build -ldflags "-X github.com/EnderRealm/ticket/cmd.Version=2.1.0" -o tk .
+```
+
+Dev builds (`go build` with no ldflags) automatically show the git commit and dirty state via `runtime/debug.ReadBuildInfo`:
+
+```
+tk version
+# dev (a1b2c3d, dirty)
 ```
 
 ## Configuration
@@ -71,20 +77,20 @@ Claude Opus picks it up naturally from there. Other models may need additional g
 
 ## Usage
 
-Run `tk help` for full command reference. Key commands:
+Run `tk help` for the full command reference. Key commands:
 
 ```
 Viewing:
   show <id>                  Display ticket details
-  ls [filters]               List tickets (default: open only)
-  ready [filters]            Unblocked tickets ready to work on
+  ls|list [filters]          List tickets (default: workflow grouped)
+  ready [filters]            Tickets with all deps resolved and parent in_progress
   blocked [filters]          Tickets with unresolved deps
   closed [--limit=N]         Recently closed tickets
 
 Creating & Editing:
-  create [title] [options]   Create ticket
+  create [title] [options]   Create ticket (interactive if no title)
   edit <id> [options]        Update ticket fields
-  add-note <id> [text]       Append timestamped note
+  add-note <id> [text]       Append timestamped note (stdin if no text)
   delete <id> [id...]        Delete ticket(s)
 
 Pipeline:
@@ -100,10 +106,13 @@ Pipeline:
 Dependencies & Links:
   dep <id> <dep-id>          Add dependency
   undep <id> <dep-id>        Remove dependency
-  link <id> <id>             Link tickets (symmetric)
+  dep tree [--full] <id>     Show dependency tree
+  dep cycle                  Find cycles in open tickets
+  link <id> <id> [id...]     Link tickets (symmetric)
+  unlink <id> <target-id>    Remove link
 
 Query:
-  query [jq-filter]          Output tickets as JSONL
+  query [jq-filter]          Output tickets as JSONL (pipe to jq)
 
 Analytics:
   stats                      Project health dashboard
@@ -112,6 +121,9 @@ Analytics:
 Interactive:
   ui                         Terminal UI (list + pipeline kanban view)
   serve                      MCP server for AI agent integration
+
+Other:
+  workflow                   Ticket workflow guide
 ```
 
 ### Pipeline Stages
@@ -138,9 +150,33 @@ Gate checks enforce preconditions at stage transitions (e.g., acceptance criteri
 -T, --tag X       Filter by tag
 --parent X        Children of ticket X
 --group-by X      Group by: workflow | pipeline | type | status | priority
+--flat            Flat list (no grouping)
 ```
 
 Partial ID matching: `tk show 5c4` matches `nw-5c46`.
+
+## Releasing
+
+1. Update `CHANGELOG.md` — move `[Unreleased]` items under a versioned heading with today's date:
+
+   ```markdown
+   ## [2.1.0] - 2026-02-26
+   ```
+
+2. Commit and tag:
+
+   ```bash
+   git commit -am "release: v2.1.0"
+   git tag v2.1.0
+   git push && git push origin v2.1.0
+   ```
+
+3. GitHub Actions handles the rest:
+   - **GoReleaser** builds darwin/linux binaries (amd64 + arm64)
+   - **Homebrew** tap updated in `EnderRealm/homebrew-tools`
+   - **AUR** package rebuilt with new checksums
+
+Required repository secrets: `GITHUB_TOKEN`, `TAP_GITHUB_TOKEN`, `AUR_SSH_KEY`.
 
 ## License
 
