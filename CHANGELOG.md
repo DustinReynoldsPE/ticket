@@ -4,6 +4,7 @@
 
 ### Fixed
 - TUI list view ID column truncated slug-based IDs — column width now computed dynamically from visible tickets
+- TUI pipeline view missing `c` keybinding for create — now matches list view behavior
 
 ## [2.3.0] - 2026-02-28
 

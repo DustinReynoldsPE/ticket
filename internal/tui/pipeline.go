@@ -204,7 +204,7 @@ func (m pipelineModel) view() string {
 	}
 
 	// Help bar.
-	help := pipeHelpStyle.Render("←→/hl stage  ↑↓/jk card  enter open  A advance  F force  R review  s skip  esc list  q quit")
+	help := pipeHelpStyle.Render("←→/hl stage  ↑↓/jk card  enter open  A advance  R review  s skip  c create  esc list  q quit")
 
 	return filter + "\n" + content + "\n" + help
 }

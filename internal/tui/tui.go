@@ -230,6 +230,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			case "q":
 				return a, tea.Quit
+			case "c":
+				a.form = newFormModel(a.width, a.height)
+				a.current = viewForm
+				return a, nil
 			case "enter":
 				if t := a.pipeline.selected(); t != nil {
 					a.detail = newDetailModel(t, a.width, a.height)
