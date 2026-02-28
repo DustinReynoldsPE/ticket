@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- TUI list view ID column truncated slug-based IDs — column width now computed dynamically from visible tickets
+
 ## [2.3.0] - 2026-02-28
 
 ### Fixed

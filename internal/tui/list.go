@@ -208,8 +208,16 @@ func (m listModel) view() string {
 	b.WriteString(strings.Join(tabs, "  "))
 	b.WriteString("\n")
 
+	// Compute ID column width from visible tickets.
+	idWidth := 4 // minimum for "ID" header
+	for _, t := range m.filtered {
+		if len(t.ID) > idWidth {
+			idWidth = len(t.ID)
+		}
+	}
+
 	// Header row.
-	b.WriteString(headerStyle.Render(fmt.Sprintf("%-9s %-3s %-11s %-14s %s", "ID", "P", "TYPE", "STATUS", "TITLE")))
+	b.WriteString(headerStyle.Render(fmt.Sprintf("%-*s %-3s %-11s %-14s %s", idWidth, "ID", "P", "TYPE", "STATUS", "TITLE")))
 	b.WriteString("\n")
 
 	// Ticket rows.
@@ -221,7 +229,7 @@ func (m listModel) view() string {
 
 	for i := m.offset; i < end; i++ {
 		t := m.filtered[i]
-		line := m.renderRow(t)
+		line := m.renderRow(t, idWidth)
 		if i == m.cursor {
 			// Pad to full width for highlight bar.
 			padded := line
@@ -254,7 +262,7 @@ func (m listModel) view() string {
 	return b.String()
 }
 
-func (m listModel) renderRow(t *ticket.Ticket) string {
+func (m listModel) renderRow(t *ticket.Ticket, idWidth int) string {
 	pStyle := lipgloss.NewStyle().Foreground(priorityColors[t.Priority])
 	tStyle := lipgloss.NewStyle().Foreground(typeColors[t.Type])
 
@@ -269,7 +277,7 @@ func (m listModel) renderRow(t *ticket.Ticket) string {
 	}
 	sStyle := lipgloss.NewStyle().Foreground(stateColor)
 
-	id := fmt.Sprintf("%-9s", t.ID)
+	id := fmt.Sprintf("%-*s", idWidth, t.ID)
 	pri := pStyle.Render(fmt.Sprintf("P%d", t.Priority))
 	typ := tStyle.Render(fmt.Sprintf("%-11s", t.Type))
 	status := sStyle.Render(fmt.Sprintf("%-14s", state))
