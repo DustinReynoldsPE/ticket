@@ -1,7 +1,7 @@
 ---
 id: tk-ui-create-bdc9
 stage: done
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-28T16:57:20Z
@@ -10,6 +10,7 @@ priority: 0
 assignee: Steve Macbeth
 ---
 # 'tk ui' Create task fails on id creation
+
 
 
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.3.0] - 2026-02-28
 
 ### Fixed
 - TUI create form failed with "ticket ID is required" — `handleCreateTicket` was missing `GenerateID()` and `Created` timestamp
