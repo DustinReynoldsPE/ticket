@@ -237,6 +237,9 @@ func (m pipelineModel) view() string {
 		availH = 3
 	}
 
+	if len(m.columns) == 0 {
+		return ""
+	}
 	colWidth := m.width / len(m.columns)
 	if colWidth < 14 {
 		colWidth = 14
