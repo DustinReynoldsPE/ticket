@@ -58,7 +58,6 @@ var allStages = []ticket.Stage{
 	ticket.StageImplement,
 	ticket.StageTest,
 	ticket.StageVerify,
-	ticket.StageDone,
 }
 
 type pipelineModel struct {
