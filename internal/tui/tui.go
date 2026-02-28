@@ -13,23 +13,26 @@ import (
 type view int
 
 const (
-	viewPipeline view = iota
+	viewDashboard view = iota
+	viewPipeline
 	viewDetail
 	viewForm
 )
 
 // App is the top-level bubbletea model.
 type App struct {
-	store    *ticket.FileStore
-	tickets  []*ticket.Ticket
-	detail   detailModel
-	form     formModel
-	pipeline pipelineModel
-	current  view
-	width    int
-	height   int
-	status   string // transient status message
-	err      error
+	store     *ticket.FileStore
+	tickets   []*ticket.Ticket
+	dashboard dashboardModel
+	detail    detailModel
+	form      formModel
+	pipeline  pipelineModel
+	current   view
+	prevView  view // view to return to from detail/form
+	width     int
+	height    int
+	status    string // transient status message
+	err       error
 }
 
 // New creates a new App rooted at the given ticket directory.
@@ -37,7 +40,7 @@ func New(ticketsDir string) App {
 	store := ticket.NewFileStore(ticketsDir)
 	return App{
 		store:   store,
-		current: viewPipeline,
+		current: viewDashboard,
 	}
 }
 
@@ -106,6 +109,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.dashboard.setSize(a.width, a.height)
 		a.detail.setSize(a.width, a.height)
 		a.form.setSize(a.width, a.height)
 		a.pipeline.setSize(a.width, a.height)
@@ -113,6 +117,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ticketsLoadedMsg:
 		a.tickets = msg
+		a.dashboard = newDashboardModel(a.tickets, a.width, a.height)
 		a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
 		// Refresh detail view if currently showing a ticket.
 		if a.current == viewDetail && a.detail.ticket != nil {
@@ -153,18 +158,47 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case skipMsg:
 		return a, a.handleSkip(msg.id)
 	case formCancelMsg:
-		a.current = viewPipeline
+		a.current = a.prevView
 		return a, nil
 
 	case tea.KeyMsg:
 		switch a.current {
+		case viewDashboard:
+			if a.dashboard.inputActive() {
+				break // let dashboard handle filter input
+			}
+			switch msg.String() {
+			case "q":
+				return a, tea.Quit
+			case "c":
+				a.form = newFormModel(a.width, a.height)
+				a.prevView = viewDashboard
+				a.current = viewForm
+				return a, nil
+			case "enter":
+				if t := a.dashboard.selected(); t != nil {
+					a.detail = newDetailModel(t, a.width, a.height)
+					a.prevView = viewDashboard
+					a.current = viewDetail
+					return a, nil
+				}
+			case "p":
+				if t := a.dashboard.selected(); t != nil {
+					return a, func() tea.Msg { return cyclePriorityMsg{id: t.ID} }
+				}
+			case "P":
+				a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
+				a.current = viewPipeline
+				return a, nil
+			}
+
 		case viewDetail:
 			if a.detail.inputActive() {
 				break // let detail handle its text input
 			}
 			switch msg.String() {
 			case "esc":
-				a.current = viewPipeline
+				a.current = a.prevView
 				return a, nil
 			case "q":
 				return a, tea.Quit
@@ -183,15 +217,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break // let pipeline handle filter input
 			}
 			switch msg.String() {
+			case "esc":
+				a.current = viewDashboard
+				return a, nil
 			case "q":
 				return a, tea.Quit
 			case "c":
 				a.form = newFormModel(a.width, a.height)
+				a.prevView = viewPipeline
 				a.current = viewForm
 				return a, nil
 			case "enter":
 				if t := a.pipeline.selected(); t != nil {
 					a.detail = newDetailModel(t, a.width, a.height)
+					a.prevView = viewPipeline
 					a.current = viewDetail
 					return a, nil
 				}
@@ -234,6 +273,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Delegate to child models.
 	switch a.current {
+	case viewDashboard:
+		var cmd tea.Cmd
+		a.dashboard, cmd = a.dashboard.update(msg)
+		return a, cmd
 	case viewDetail:
 		var cmd tea.Cmd
 		a.detail, cmd = a.detail.update(msg)
@@ -258,11 +301,13 @@ func (a App) View() string {
 
 	var content string
 	switch a.current {
+	case viewDashboard:
+		content = a.dashboard.view()
 	case viewDetail:
 		content = a.detail.view()
 	case viewForm:
 		content = a.form.view()
-	default:
+	case viewPipeline:
 		content = a.pipeline.view()
 	}
 
@@ -423,7 +468,7 @@ func (a *App) handleCreateTicket(msg formSubmitMsg) tea.Cmd {
 		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
 	}
 
-	a.current = viewPipeline
+	a.current = a.prevView
 	status := fmt.Sprintf("Created %s: %s", t.ID, t.Title)
 	return tea.Batch(
 		loadTickets(a.store),
