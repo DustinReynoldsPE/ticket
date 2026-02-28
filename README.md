@@ -12,6 +12,13 @@ Tickets are markdown files with YAML frontmatter in `.tickets/`. This allows AI 
 brew install EnderRealm/tools/ticket
 ```
 
+To upgrade after a new release:
+
+```bash
+brew update                        # fetch latest tap metadata
+brew upgrade ticket
+```
+
 ### From source
 
 Requires Go 1.25+.
