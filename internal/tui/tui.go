@@ -483,12 +483,14 @@ func (a *App) handleSkip(id string) tea.Cmd {
 
 func (a *App) handleCreateTicket(msg formSubmitMsg) tea.Cmd {
 	t := &ticket.Ticket{
+		ID:       ticket.GenerateID(msg.title),
 		Title:    msg.title,
 		Type:     msg.ticketType,
 		Priority: msg.priority,
 		Assignee: msg.assignee,
 		Status:   ticket.StatusOpen,
 		Stage:    ticket.StageTriage,
+		Created:  time.Now().UTC(),
 	}
 
 	if msg.description != "" {
