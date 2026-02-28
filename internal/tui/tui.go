@@ -13,17 +13,15 @@ import (
 type view int
 
 const (
-	viewList view = iota
+	viewPipeline view = iota
 	viewDetail
 	viewForm
-	viewPipeline
 )
 
 // App is the top-level bubbletea model.
 type App struct {
 	store    *ticket.FileStore
 	tickets  []*ticket.Ticket
-	list     listModel
 	detail   detailModel
 	form     formModel
 	pipeline pipelineModel
@@ -39,7 +37,7 @@ func New(ticketsDir string) App {
 	store := ticket.NewFileStore(ticketsDir)
 	return App{
 		store:   store,
-		current: viewList,
+		current: viewPipeline,
 	}
 }
 
@@ -49,9 +47,6 @@ type ticketsLoadedMsg []*ticket.Ticket
 type errMsg error
 type statusMsg string
 type clearStatusMsg struct{}
-
-// cycleStatusMsg requests a status cycle on the selected ticket.
-type cycleStatusMsg struct{ id string }
 
 // cyclePriorityMsg requests a priority cycle on the selected ticket.
 type cyclePriorityMsg struct{ id string }
@@ -111,7 +106,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		a.list.setSize(a.width, a.height)
 		a.detail.setSize(a.width, a.height)
 		a.form.setSize(a.width, a.height)
 		a.pipeline.setSize(a.width, a.height)
@@ -119,7 +113,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ticketsLoadedMsg:
 		a.tickets = msg
-		a.list = newListModel(a.tickets, a.width, a.height)
 		a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
 		// Refresh detail view if currently showing a ticket.
 		if a.current == viewDetail && a.detail.ticket != nil {
@@ -145,8 +138,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	// Mutation messages - handled at App level where store is accessible.
-	case cycleStatusMsg:
-		return a, a.handleCycleStatus(msg.id)
 	case cyclePriorityMsg:
 		return a, a.handleCyclePriority(msg.id)
 	case setAssigneeMsg:
@@ -162,57 +153,21 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case skipMsg:
 		return a, a.handleSkip(msg.id)
 	case formCancelMsg:
-		a.current = viewList
+		a.current = viewPipeline
 		return a, nil
 
 	case tea.KeyMsg:
 		switch a.current {
-		case viewList:
-			if a.list.inputActive() {
-				break // let list handle it
-			}
-			switch msg.String() {
-			case "enter":
-				if len(a.list.filtered) > 0 {
-					t := a.list.filtered[a.list.cursor]
-					a.detail = newDetailModel(t, a.width, a.height)
-					a.current = viewDetail
-					return a, nil
-				}
-			case "q":
-				return a, tea.Quit
-			case "c":
-				a.form = newFormModel(a.width, a.height)
-				a.current = viewForm
-				return a, nil
-			case "s":
-				if len(a.list.filtered) > 0 {
-					t := a.list.filtered[a.list.cursor]
-					return a, func() tea.Msg { return cycleStatusMsg{id: t.ID} }
-				}
-			case "p":
-				if len(a.list.filtered) > 0 {
-					t := a.list.filtered[a.list.cursor]
-					return a, func() tea.Msg { return cyclePriorityMsg{id: t.ID} }
-				}
-			case "P":
-				a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
-				a.current = viewPipeline
-				return a, nil
-			}
-
 		case viewDetail:
 			if a.detail.inputActive() {
 				break // let detail handle its text input
 			}
 			switch msg.String() {
 			case "esc":
-				a.current = viewList
+				a.current = viewPipeline
 				return a, nil
 			case "q":
 				return a, tea.Quit
-			case "s":
-				return a, func() tea.Msg { return cycleStatusMsg{id: a.detail.ticket.ID} }
 			case "p":
 				return a, func() tea.Msg { return cyclePriorityMsg{id: a.detail.ticket.ID} }
 			case "a":
@@ -224,10 +179,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case viewPipeline:
+			if a.pipeline.inputActive() {
+				break // let pipeline handle filter input
+			}
 			switch msg.String() {
-			case "esc":
-				a.current = viewList
-				return a, nil
 			case "q":
 				return a, tea.Quit
 			case "c":
@@ -269,16 +224,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if t := a.pipeline.selected(); t != nil {
 					return a, func() tea.Msg { return skipMsg{id: t.ID} }
 				}
+			case "p":
+				if t := a.pipeline.selected(); t != nil {
+					return a, func() tea.Msg { return cyclePriorityMsg{id: t.ID} }
+				}
 			}
 		}
 	}
 
 	// Delegate to child models.
 	switch a.current {
-	case viewList:
-		var cmd tea.Cmd
-		a.list, cmd = a.list.update(msg)
-		return a, cmd
 	case viewDetail:
 		var cmd tea.Cmd
 		a.detail, cmd = a.detail.update(msg)
@@ -307,10 +262,8 @@ func (a App) View() string {
 		content = a.detail.view()
 	case viewForm:
 		content = a.form.view()
-	case viewPipeline:
-		content = a.pipeline.view()
 	default:
-		content = a.list.view()
+		content = a.pipeline.view()
 	}
 
 	if a.status != "" {
@@ -326,41 +279,6 @@ func (a App) View() string {
 }
 
 // Mutation handlers
-
-var statusCycle = []ticket.Status{
-	ticket.StatusOpen,
-	ticket.StatusInProgress,
-	ticket.StatusNeedsTesting,
-	ticket.StatusClosed,
-}
-
-func (a *App) handleCycleStatus(id string) tea.Cmd {
-	t, err := a.store.Get(id)
-	if err != nil {
-		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
-	}
-
-	// Find next status in cycle.
-	next := ticket.StatusOpen
-	for i, s := range statusCycle {
-		if s == t.Status {
-			next = statusCycle[(i+1)%len(statusCycle)]
-			break
-		}
-	}
-
-	t.Status = next
-	if err := a.store.Update(t); err != nil {
-		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
-	}
-	ticket.PropagateStatus(a.store, t.ID)
-
-	msg := fmt.Sprintf("%s -> %s", id, next)
-	return tea.Batch(
-		loadTickets(a.store),
-		func() tea.Msg { return statusMsg(msg) },
-	)
-}
 
 func (a *App) handleCyclePriority(id string) tea.Cmd {
 	t, err := a.store.Get(id)
@@ -505,7 +423,7 @@ func (a *App) handleCreateTicket(msg formSubmitMsg) tea.Cmd {
 		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
 	}
 
-	a.current = viewList
+	a.current = viewPipeline
 	status := fmt.Sprintf("Created %s: %s", t.ID, t.Title)
 	return tea.Batch(
 		loadTickets(a.store),

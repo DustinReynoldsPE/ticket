@@ -26,6 +26,23 @@ var (
 		ticket.ReviewRejected: "1", // red
 	}
 
+	priorityColors = map[int]lipgloss.Color{
+		0: "1", // red - critical
+		1: "3", // yellow - high
+		2: "7", // white - normal
+		3: "8", // gray - low
+		4: "8", // gray - backlog
+	}
+
+	typeColors = map[ticket.TicketType]lipgloss.Color{
+		ticket.TypeBug:     "1", // red
+		ticket.TypeFeature: "2", // green
+		ticket.TypeEpic:    "5", // magenta
+		ticket.TypeTask:    "4", // blue
+		ticket.TypeChore:   "8", // gray
+	}
+
+	filterStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	colHeaderStyle = lipgloss.NewStyle().Bold(true).Underline(true)
 	cardStyle      = lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1)
 	cardSelected   = lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1).
@@ -45,13 +62,15 @@ var allStages = []ticket.Stage{
 }
 
 type pipelineModel struct {
-	all       []*ticket.Ticket
-	columns   []pipelineColumn
-	stageCol  int // index into columns (horizontal cursor)
-	cardRow   int // index into current column's tickets (vertical cursor)
-	width     int
-	height    int
-	typeFilter ticket.TicketType // "" = all types
+	all          []*ticket.Ticket
+	columns      []pipelineColumn
+	stageCol     int // index into columns (horizontal cursor)
+	cardRow      int // index into current column's tickets (vertical cursor)
+	width        int
+	height       int
+	typeFilter   ticket.TicketType // "" = all types
+	filterText   string
+	filterActive bool
 }
 
 type pipelineColumn struct {
@@ -76,11 +95,18 @@ func (m *pipelineModel) setSize(w, h int) {
 
 func (m *pipelineModel) buildColumns() {
 	m.columns = nil
+	needle := strings.ToLower(m.filterText)
 	for _, stage := range allStages {
 		col := pipelineColumn{stage: stage}
 		for _, t := range m.all {
 			if m.typeFilter != "" && t.Type != m.typeFilter {
 				continue
+			}
+			if needle != "" {
+				if !strings.Contains(strings.ToLower(t.Title), needle) &&
+					!strings.Contains(strings.ToLower(t.ID), needle) {
+					continue
+				}
 			}
 			s := t.Stage
 			if s == "" {
@@ -124,12 +150,34 @@ func (m pipelineModel) selected() *ticket.Ticket {
 }
 
 func (m pipelineModel) inputActive() bool {
-	return false
+	return m.filterActive
 }
 
 func (m pipelineModel) update(msg tea.Msg) (pipelineModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.filterActive {
+			switch msg.String() {
+			case "esc":
+				m.filterActive = false
+				m.filterText = ""
+				m.buildColumns()
+			case "enter":
+				m.filterActive = false
+			case "backspace":
+				if len(m.filterText) > 0 {
+					m.filterText = m.filterText[:len(m.filterText)-1]
+					m.buildColumns()
+				}
+			default:
+				if len(msg.String()) == 1 {
+					m.filterText += msg.String()
+					m.buildColumns()
+				}
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "left", "h":
 			if m.stageCol > 0 {
@@ -165,6 +213,14 @@ func (m pipelineModel) update(msg tea.Msg) (pipelineModel, tea.Cmd) {
 				}
 			}
 			m.buildColumns()
+		case "/":
+			m.filterActive = true
+			m.filterText = ""
+		case "esc":
+			if m.filterText != "" {
+				m.filterText = ""
+				m.buildColumns()
+			}
 		}
 	}
 	return m, nil
@@ -196,17 +252,26 @@ func (m pipelineModel) view() string {
 	content := joinHorizontal(colViews)
 
 	// Filter line.
-	var filter string
-	if m.typeFilter != "" {
-		filter = filterStyle.Render(fmt.Sprintf("type: %s  (t to cycle)", m.typeFilter))
+	var filterLine string
+	if m.filterActive {
+		filterLine = filterStyle.Render("/ " + m.filterText + "█")
+	} else if m.filterText != "" {
+		filterLine = filterStyle.Render("filter: " + m.filterText + "  (/ to edit, esc clears)")
 	} else {
-		filter = filterStyle.Render("all types  (t to cycle)")
+		var parts []string
+		if m.typeFilter != "" {
+			parts = append(parts, fmt.Sprintf("type: %s", m.typeFilter))
+		} else {
+			parts = append(parts, "all types")
+		}
+		parts = append(parts, "(t type, / search)")
+		filterLine = filterStyle.Render(strings.Join(parts, "  "))
 	}
 
 	// Help bar.
-	help := pipeHelpStyle.Render("←→/hl stage  ↑↓/jk card  enter open  A advance  R review  s skip  c create  esc list  q quit")
+	help := pipeHelpStyle.Render("←→/hl stage  ↑↓/jk card  enter open  A advance  R review  S skip  p priority  c create  q quit")
 
-	return filter + "\n" + content + "\n" + help
+	return filterLine + "\n" + content + "\n" + help
 }
 
 func (m pipelineModel) renderColumn(colIdx int, col pipelineColumn, colWidth, maxH int) string {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- TUI default view is now pipeline (kanban by stage) — removed status-based list view entirely
+- Pipeline view now supports text search (`/`), priority cycling (`p`), and create (`c`)
+
 ### Fixed
 - TUI list view ID column truncated slug-based IDs — column width now computed dynamically from visible tickets
 - TUI pipeline view missing `c` keybinding for create — now matches list view behavior
