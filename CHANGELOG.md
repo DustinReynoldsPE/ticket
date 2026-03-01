@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.4.0] - 2026-02-28
 
 ### Added
 - TUI `v` key on verify tab advances ticket to next stage; `R` on review tab approves review
