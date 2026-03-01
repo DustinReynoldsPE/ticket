@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -243,7 +244,10 @@ func (m formModel) view() string {
 
 	for i := formField(0); i <= last; i++ {
 		label := formLabelStyle.Render(labels[i])
-		var val string
+		cursor := "  "
+		if i == m.focus {
+			cursor = formCursorStyle.Render("> ")
+		}
 
 		switch i {
 		case fieldType:
@@ -255,7 +259,7 @@ func (m formModel) view() string {
 				}
 				parts = append(parts, s)
 			}
-			val = strings.Join(parts, "  ")
+			b.WriteString(cursor + label + " " + strings.Join(parts, "  ") + "\n")
 		case fieldPriority:
 			var parts []string
 			for j := 0; j < 5; j++ {
@@ -267,7 +271,7 @@ func (m formModel) view() string {
 				}
 				parts = append(parts, s)
 			}
-			val = strings.Join(parts, "  ")
+			b.WriteString(cursor + label + " " + strings.Join(parts, "  ") + "\n")
 		case fieldStage:
 			var parts []string
 			for j, s := range m.stages {
@@ -279,41 +283,78 @@ func (m formModel) view() string {
 				}
 				parts = append(parts, styled)
 			}
-			val = strings.Join(parts, "  ")
+			b.WriteString(cursor + label + " " + strings.Join(parts, "  ") + "\n")
 		default:
-			val = m.fields[i]
+			// Text fields: wrap long text across multiple lines at word boundaries.
+			text := m.fields[i]
 			avail := m.width - 18 // 2 cursor + 14 label + 1 space + 1 block cursor
-			if i == m.focus && m.isTextField(i) {
-				// Render with cursor at position, viewport follows cursor.
+			if avail < 1 {
+				avail = 1
+			}
+			wrapped := wrapText(text, avail)
+			pad := strings.Repeat(" ", 17) // visual width of cursor + label + space
+
+			if i == m.focus {
 				pos := m.cursors[i]
-				if avail > 0 && len(val) > avail {
-					// Compute viewport window around cursor.
-					start := 0
-					if pos > avail-1 {
-						start = pos - avail + 1
-					}
-					end := start + avail
-					if end > len(val) {
-						end = len(val)
-						start = end - avail
-					}
-					val = val[start:end]
-					pos = pos - start
+				if pos > len(text) {
+					pos = len(text)
 				}
-				before := val[:pos]
-				after := val[pos:]
-				val = formActiveStyle.Render(before) + formCursorStyle.Render("█") + formActiveStyle.Render(after)
-			} else if avail > 0 && len(val) > avail {
-				val = val[:avail-1] + "…"
+				runePos := utf8.RuneCountInString(text[:pos])
+				totalRunes := utf8.RuneCountInString(text)
+
+				// Map flat rune position to wrapped line/column.
+				cursorLine := len(wrapped) - 1
+				cursorCol := runePos - wrapped[cursorLine].start
+				for j := range wrapped {
+					nextStart := totalRunes
+					if j+1 < len(wrapped) {
+						nextStart = wrapped[j+1].start
+					}
+					if runePos < nextStart {
+						cursorLine = j
+						cursorCol = runePos - wrapped[j].start
+						break
+					}
+				}
+
+				// Cursor at EOF may need an extra line.
+				if cursorLine == len(wrapped)-1 {
+					lineRunes := []rune(wrapped[cursorLine].text)
+					if cursorCol > len(lineRunes) {
+						wrapped = append(wrapped, wrappedLine{text: "", start: totalRunes})
+						cursorLine = len(wrapped) - 1
+						cursorCol = 0
+					}
+				}
+
+				for j, wl := range wrapped {
+					prefix := pad
+					if j == 0 {
+						prefix = cursor + label + " "
+					}
+					if j == cursorLine {
+						lineRunes := []rune(wl.text)
+						col := cursorCol
+						if col > len(lineRunes) {
+							col = len(lineRunes)
+						}
+						before := string(lineRunes[:col])
+						after := string(lineRunes[col:])
+						b.WriteString(prefix + formActiveStyle.Render(before) + formCursorStyle.Render("█") + formActiveStyle.Render(after) + "\n")
+					} else {
+						b.WriteString(prefix + formActiveStyle.Render(wl.text) + "\n")
+					}
+				}
+			} else {
+				for j, wl := range wrapped {
+					prefix := pad
+					if j == 0 {
+						prefix = cursor + label + " "
+					}
+					b.WriteString(prefix + wl.text + "\n")
+				}
 			}
 		}
-
-		cursor := "  "
-		if i == m.focus {
-			cursor = formCursorStyle.Render("> ")
-		}
-
-		b.WriteString(cursor + label + " " + val + "\n")
 	}
 
 	b.WriteString("\n")
@@ -336,3 +377,59 @@ type formSubmitMsg struct {
 }
 
 type formCancelMsg struct{}
+
+type wrappedLine struct {
+	text  string
+	start int // rune offset in original text
+}
+
+// wrapText breaks s into lines of at most width runes, preferring spaces
+// as break points so words stay intact. Falls back to hard breaks for
+// words longer than width.
+func wrapText(s string, width int) []wrappedLine {
+	runes := []rune(s)
+	if len(runes) <= width {
+		return []wrappedLine{{text: s, start: 0}}
+	}
+
+	var result []wrappedLine
+	lineStart := 0
+	lastSpace := -1
+
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == ' ' {
+			lastSpace = i
+		}
+		if i-lineStart+1 > width {
+			if lastSpace > lineStart {
+				// Find start of space run to avoid trailing spaces on the line.
+				breakAt := lastSpace
+				for breakAt > lineStart && runes[breakAt-1] == ' ' {
+					breakAt--
+				}
+				result = append(result, wrappedLine{
+					text:  string(runes[lineStart:breakAt]),
+					start: lineStart,
+				})
+				lineStart = lastSpace + 1
+				// Skip consecutive spaces at the new line start.
+				for lineStart < len(runes) && runes[lineStart] == ' ' {
+					lineStart++
+				}
+			} else {
+				result = append(result, wrappedLine{
+					text:  string(runes[lineStart:i]),
+					start: lineStart,
+				})
+				lineStart = i
+			}
+			lastSpace = -1
+		}
+	}
+	result = append(result, wrappedLine{
+		text:  string(runes[lineStart:]),
+		start: lineStart,
+	})
+
+	return result
+}

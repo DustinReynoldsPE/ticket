@@ -15,6 +15,7 @@
 - TUI detail view help bar uses consistent `(k)ey` format with `│` separators
 
 ### Fixed
+- TUI form text fields wrap long text across multiple lines instead of scrolling horizontally off-screen
 - TUI form text fields overflowed past terminal width — now truncated with cursor-aware viewport, left/right arrow movement, and home/end support
 - MCP `ticket_create` didn't set `created` timestamp — tickets created via MCP had zero-value dates
 - TUI list view ID column truncated slug-based IDs — column width now computed dynamically from visible tickets
