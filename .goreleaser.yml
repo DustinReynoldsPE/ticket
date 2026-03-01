@@ -26,7 +26,7 @@ changelog:
 
 brews:
   - repository:
-      owner: EnderRealm
+      owner: DustinReynoldsPE
       name: homebrew-tools
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     name: ticket
