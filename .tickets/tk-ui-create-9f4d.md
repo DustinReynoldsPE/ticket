@@ -1,7 +1,7 @@
 ---
 id: tk-ui-create-9f4d
 stage: done
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-03-01T00:43:50Z
@@ -10,6 +10,7 @@ priority: 0
 skipped: [implement, test]
 ---
 # 'tk ui' On the create screen the title field doesn't wrap
+
 
 
 

@@ -1,6 +1,6 @@
 ---
 id: tk-ui-esc-b141
-stage: triage
+stage: implement
 status: open
 deps: []
 links: []
@@ -9,3 +9,5 @@ type: bug
 priority: 0
 ---
 # 'tk ui' esc doesn't return from the post edit save screen
+
+
