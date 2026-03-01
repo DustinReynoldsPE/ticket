@@ -1,8 +1,7 @@
 ---
 id: tk-ui-edit-4a94
-stage: verify
+stage: done
 status: in_progress
-review: approved
 deps: []
 links: []
 created: 2026-03-01T00:45:11Z
@@ -11,6 +10,7 @@ priority: 1
 skipped: [implement, test]
 ---
 # 'tk ui' edit should enable changing of workflow stage
+
 
 
 

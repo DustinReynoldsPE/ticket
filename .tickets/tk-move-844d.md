@@ -1,6 +1,6 @@
 ---
 id: tk-move-844d
-stage: triage
+stage: done
 status: open
 deps: []
 links: []
@@ -9,3 +9,12 @@ type: task
 priority: 2
 ---
 # 'tk move
+
+
+
+
+## Notes
+
+**2026-03-01T02:30:38Z**
+
+Mistake!
