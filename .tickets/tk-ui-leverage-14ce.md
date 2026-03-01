@@ -1,8 +1,7 @@
 ---
 id: tk-ui-leverage-14ce
-stage: verify
+stage: done
 status: in_progress
-review: approved
 deps: []
 links: []
 created: 2026-02-28T20:20:53Z
@@ -11,6 +10,7 @@ priority: 2
 skipped: [spec, design, implement, test]
 ---
 # 'tk ui' leverage file watch to update in real-time?
+
 
 
 

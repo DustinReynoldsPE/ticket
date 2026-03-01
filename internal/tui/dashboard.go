@@ -253,7 +253,14 @@ func (m dashboardModel) view() string {
 	} else if m.filterText != "" {
 		b.WriteString(filterStyle.Render("filter: " + m.filterText + "  (/ to edit, esc clears)"))
 	} else {
-		help := "tab ↑↓ / t filter  │  enter (o)pen (c)reate (e)dit  │  (p)riority  │  (q)uit"
+		help := "tab ↑↓ / t filter  │  enter (o)pen (c)reate (e)dit  │  (p)riority"
+		switch m.tab {
+		case tabVerify:
+			help += "  (v)erify"
+		case tabReview:
+			help += "  (R)eview"
+		}
+		help += "  │  (q)uit"
 		b.WriteString(dashHelpStyle.Render(help))
 	}
 

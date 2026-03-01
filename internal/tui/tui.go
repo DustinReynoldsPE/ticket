@@ -207,6 +207,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if t := a.dashboard.selected(); t != nil {
 					return a, func() tea.Msg { return cyclePriorityMsg{id: t.ID} }
 				}
+			case "v":
+				if a.dashboard.tab == tabVerify {
+					if t := a.dashboard.selected(); t != nil {
+						return a, a.handleVerify(t.ID)
+					}
+				}
+			case "R":
+				if a.dashboard.tab == tabReview {
+					if t := a.dashboard.selected(); t != nil {
+						return a, func() tea.Msg {
+							return reviewMsg{id: t.ID, verdict: ticket.ReviewApproved}
+						}
+					}
+				}
 			}
 
 		case viewDetail:
@@ -535,5 +549,23 @@ func (a *App) handleEditTicket(msg formSubmitMsg) tea.Cmd {
 	return tea.Batch(
 		loadTickets(a.store),
 		func() tea.Msg { return statusMsg(status) },
+	)
+}
+
+func (a *App) handleVerify(id string) tea.Cmd {
+	// Approve review first (gate requires it), then advance.
+	if err := ticket.SetReview(a.store, id, "human:tui", ticket.ReviewApproved, "verified via TUI"); err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	result, err := ticket.Advance(a.store, id, ticket.AdvanceOptions{})
+	if err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	msg := fmt.Sprintf("%s: verified → %s", id, result.To)
+	return tea.Batch(
+		loadTickets(a.store),
+		func() tea.Msg { return statusMsg(msg) },
 	)
 }
