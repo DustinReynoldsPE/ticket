@@ -1,6 +1,6 @@
 ---
 id: tk-ui-increase-7fc4
-status: in_progress
+status: closed
 review: approved
 deps: []
 links: []
@@ -14,9 +14,11 @@ assignee: Steve Macbeth
 
 
 
+
+
 ## Test Results
 
-All tests pass (`go test ./...`). Build clean (`go build ./...`). Fix: list view header and renderRow now use dynamic `%-*s` width computed from max ID length in filtered tickets.
+`go test ./...` passes (no TUI-specific tests exist). Build compiles clean. **Manual testing required:** verify ID column width adjusts to longest ID in `tk ui` list view.
 
 ## Review Log
 

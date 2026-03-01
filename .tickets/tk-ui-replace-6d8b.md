@@ -1,7 +1,7 @@
 ---
 id: tk-ui-replace-6d8b
 stage: triage
-status: in_progress
+status: closed
 review: approved
 deps: []
 links: []
@@ -12,6 +12,7 @@ assignee: Steve Macbeth
 tags: [tui]
 ---
 # 'tk ui' Replace pipeline kanban with triage + inbox dashboard
+
 
 
 

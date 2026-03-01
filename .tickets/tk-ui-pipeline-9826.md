@@ -1,6 +1,6 @@
 ---
 id: tk-ui-pipeline-9826
-status: in_progress
+status: closed
 review: approved
 deps: []
 links: []
@@ -13,9 +13,11 @@ priority: 0
 
 
 
+
+
 ## Test Results
 
-All tests pass (`go test ./...`). Build clean. Added `c` keybinding to pipeline view's key handler and updated help bar.
+`go test ./...` passes (no TUI-specific tests exist). Build compiles clean. **Manual testing required:** press `c` in pipeline view to confirm create form opens.
 
 ## Review Log
 

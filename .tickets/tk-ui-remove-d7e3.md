@@ -1,6 +1,6 @@
 ---
 id: tk-ui-remove-d7e3
-status: in_progress
+status: closed
 review: approved
 deps: []
 links: []
@@ -13,9 +13,11 @@ priority: 0
 
 
 
+
+
 ## Test Results
 
-All tests pass (`go test ./...`). Build clean. Removed list.go, rewired tui.go to default to pipeline view, added text search and priority cycling to pipeline model.
+`go test ./...` passes (no TUI-specific tests exist). Build compiles clean. **Manual testing required:** pipeline as default view, `/` text search, `p` priority cycling, `c` create, `esc` from detail back to pipeline, form cancel back to pipeline.
 
 ## Review Log
 

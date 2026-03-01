@@ -1,8 +1,7 @@
 ---
 id: tk-ui-enable-b94e
-stage: verify
+stage: done
 status: in_progress
-review: approved
 deps: []
 links: []
 created: 2026-03-01T00:23:16Z
@@ -11,6 +10,7 @@ priority: 1
 skipped: [spec, design, implement]
 ---
 # 'tk ui' enable edit mode leveraging the create screen
+
 
 
 

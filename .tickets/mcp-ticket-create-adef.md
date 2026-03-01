@@ -1,7 +1,7 @@
 ---
 id: mcp-ticket-create-adef
 stage: triage
-status: in_progress
+status: closed
 review: approved
 deps: []
 links: []
@@ -10,6 +10,12 @@ type: bug
 priority: 0
 ---
 # MCP: ticket_create doesn't set created datetime field
+
+
+
+
+
+
 
 
 
