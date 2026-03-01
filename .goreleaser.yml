@@ -30,7 +30,7 @@ brews:
       name: homebrew-tools
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     name: ticket
-    homepage: "https://github.com/EnderRealm/ticket"
+    homepage: "https://github.com/DustinReynoldsPE/ticket"
     description: "Markdown-based ticket management CLI"
     install: |
       bin.install "tk"

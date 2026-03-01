@@ -24,7 +24,7 @@ brew upgrade ticket
 Requires Go 1.25+.
 
 ```bash
-git clone https://github.com/EnderRealm/ticket.git
+git clone https://github.com/DustinReynoldsPE/ticket.git
 cd ticket
 go build -o ~/.local/bin/tk .
 ```
@@ -203,3 +203,7 @@ gh secret set TAP_GITHUB_TOKEN
 ## License
 
 MIT
+
+## Credits
+
+GitHub user https://github.com/smacbeth has graciously improved the original [wedow/ticket](https://github.com/wedow/ticket) by creating a full pipeline system based off of it.  See https://github.com/EnderRealm/ticket for details!
