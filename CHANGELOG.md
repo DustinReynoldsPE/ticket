@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.4.0] - 2026-03-01
 
 ### Fixed
 - Ticket body accumulated extra blank lines on each save (parse→serialize round-trip)
