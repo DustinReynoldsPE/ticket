@@ -312,6 +312,7 @@ func registerCreate(server *mcp.Server, store *ticket.FileStore) {
 			Status:   ticket.StatusOpen,
 			Stage:    ticket.StageTriage,
 			Priority: 2,
+			Created:  time.Now().UTC(),
 		}
 
 		if args.Type != "" {

@@ -8,6 +8,7 @@
 - Pipeline view now supports text search (`/`), priority cycling (`p`), and create (`c`)
 
 ### Fixed
+- MCP `ticket_create` didn't set `created` timestamp — tickets created via MCP had zero-value dates
 - TUI list view ID column truncated slug-based IDs — column width now computed dynamically from visible tickets
 - TUI pipeline view missing `c` keybinding for create — now matches list view behavior
 
