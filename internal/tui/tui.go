@@ -553,17 +553,12 @@ func (a *App) handleEditTicket(msg formSubmitMsg) tea.Cmd {
 }
 
 func (a *App) handleVerify(id string) tea.Cmd {
-	// Approve review first (gate requires it), then advance.
+	// Approve review only — ticket stays at verify until commit/push/close.
 	if err := ticket.SetReview(a.store, id, "human:tui", ticket.ReviewApproved, "verified via TUI"); err != nil {
 		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
 	}
 
-	result, err := ticket.Advance(a.store, id, ticket.AdvanceOptions{})
-	if err != nil {
-		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
-	}
-
-	msg := fmt.Sprintf("%s: verified → %s", id, result.To)
+	msg := fmt.Sprintf("%s: verified ✓", id)
 	return tea.Batch(
 		loadTickets(a.store),
 		func() tea.Msg { return statusMsg(msg) },
