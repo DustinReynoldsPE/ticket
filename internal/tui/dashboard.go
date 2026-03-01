@@ -10,23 +10,30 @@ import (
 )
 
 var (
-	paneHeaderStyle = lipgloss.NewStyle().Bold(true).Underline(true)
-	paneActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	paneDimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	detailStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	dashHelpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	rowSelected     = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("237"))
+	tabActiveStyle = lipgloss.NewStyle().Bold(true).Underline(true)
+	tabDimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	dashRowStyle   = lipgloss.NewStyle()
+	dashRowSel     = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("237"))
+	dashHelpStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
+
+type inboxTab int
+
+const (
+	tabAll inboxTab = iota
+	tabTriage
+	tabVerify
+	tabReview
+)
+
+var tabLabels = []string{"all", "triage", "verify", "review"}
 
 type dashboardModel struct {
 	all          []*ticket.Ticket
-	triage       []ticket.InboxItem
-	inbox        []ticket.InboxItem
-	focusPane    int // 0=triage, 1=inbox
-	triageCursor int
-	inboxCursor  int
-	triageOffset int
-	inboxOffset  int
+	items        []ticket.InboxItem
+	tab          inboxTab
+	cursor       int
+	offset       int
 	width        int
 	height       int
 	filterText   string
@@ -40,7 +47,7 @@ func newDashboardModel(tickets []*ticket.Ticket, w, h int) dashboardModel {
 		width:  w,
 		height: h,
 	}
-	m.buildPanes()
+	m.buildItems()
 	return m
 }
 
@@ -49,9 +56,8 @@ func (m *dashboardModel) setSize(w, h int) {
 	m.height = h
 }
 
-func (m *dashboardModel) buildPanes() {
-	m.triage = nil
-	m.inbox = nil
+func (m *dashboardModel) buildItems() {
+	m.items = nil
 	needle := strings.ToLower(m.filterText)
 
 	for _, t := range m.all {
@@ -67,36 +73,67 @@ func (m *dashboardModel) buildPanes() {
 				continue
 			}
 		}
+
 		item := ticket.NextAction(t)
-		switch item.Action {
-		case ticket.ActionHumanInput:
-			m.triage = append(m.triage, item)
-		case ticket.ActionHumanReview:
-			m.inbox = append(m.inbox, item)
+		if item.Action != ticket.ActionHumanReview && item.Action != ticket.ActionHumanInput {
+			continue
 		}
+
+		switch m.tab {
+		case tabTriage:
+			if t.Stage != ticket.StageTriage {
+				continue
+			}
+		case tabVerify:
+			if t.Stage != ticket.StageVerify {
+				continue
+			}
+		case tabReview:
+			if t.Review != ticket.ReviewPending {
+				continue
+			}
+		}
+
+		m.items = append(m.items, item)
 	}
 
-	// Clamp cursors.
-	if m.triageCursor >= len(m.triage) {
-		m.triageCursor = max(0, len(m.triage)-1)
+	if m.cursor >= len(m.items) {
+		m.cursor = max(0, len(m.items)-1)
 	}
-	if m.inboxCursor >= len(m.inbox) {
-		m.inboxCursor = max(0, len(m.inbox)-1)
-	}
+	m.clampOffset()
 }
 
 func (m dashboardModel) selected() *ticket.Ticket {
-	if m.focusPane == 0 && m.triageCursor >= 0 && m.triageCursor < len(m.triage) {
-		return m.triage[m.triageCursor].Ticket
-	}
-	if m.focusPane == 1 && m.inboxCursor >= 0 && m.inboxCursor < len(m.inbox) {
-		return m.inbox[m.inboxCursor].Ticket
+	if m.cursor >= 0 && m.cursor < len(m.items) {
+		return m.items[m.cursor].Ticket
 	}
 	return nil
 }
 
 func (m dashboardModel) inputActive() bool {
 	return m.filterActive
+}
+
+func (m *dashboardModel) clampOffset() {
+	visible := m.visibleRows()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+visible {
+		m.offset = m.cursor - visible + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+func (m dashboardModel) visibleRows() int {
+	// Reserve: 1 tabs, 1 header, 1 filter/help bar.
+	rows := m.height - 3
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
 func (m dashboardModel) update(msg tea.Msg) (dashboardModel, tea.Cmd) {
@@ -107,18 +144,18 @@ func (m dashboardModel) update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 			case "esc":
 				m.filterActive = false
 				m.filterText = ""
-				m.buildPanes()
+				m.buildItems()
 			case "enter":
 				m.filterActive = false
 			case "backspace":
 				if len(m.filterText) > 0 {
 					m.filterText = m.filterText[:len(m.filterText)-1]
-					m.buildPanes()
+					m.buildItems()
 				}
 			default:
 				if len(msg.String()) == 1 {
 					m.filterText += msg.String()
-					m.buildPanes()
+					m.buildItems()
 				}
 			}
 			return m, nil
@@ -126,39 +163,27 @@ func (m dashboardModel) update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 
 		switch msg.String() {
 		case "tab":
-			m.focusPane = (m.focusPane + 1) % 2
+			m.tab = inboxTab((int(m.tab) + 1) % len(tabLabels))
+			m.buildItems()
+		case "shift+tab":
+			m.tab = inboxTab((int(m.tab) - 1 + len(tabLabels)) % len(tabLabels))
+			m.buildItems()
 		case "up", "k":
-			if m.focusPane == 0 && m.triageCursor > 0 {
-				m.triageCursor--
-				m.clampOffset(0)
-			} else if m.focusPane == 1 && m.inboxCursor > 0 {
-				m.inboxCursor--
-				m.clampOffset(1)
+			if m.cursor > 0 {
+				m.cursor--
+				m.clampOffset()
 			}
 		case "down", "j":
-			if m.focusPane == 0 && m.triageCursor < len(m.triage)-1 {
-				m.triageCursor++
-				m.clampOffset(0)
-			} else if m.focusPane == 1 && m.inboxCursor < len(m.inbox)-1 {
-				m.inboxCursor++
-				m.clampOffset(1)
+			if m.cursor < len(m.items)-1 {
+				m.cursor++
+				m.clampOffset()
 			}
 		case "g":
-			if m.focusPane == 0 {
-				m.triageCursor = 0
-				m.clampOffset(0)
-			} else {
-				m.inboxCursor = 0
-				m.clampOffset(1)
-			}
+			m.cursor = 0
+			m.clampOffset()
 		case "G":
-			if m.focusPane == 0 {
-				m.triageCursor = max(0, len(m.triage)-1)
-				m.clampOffset(0)
-			} else {
-				m.inboxCursor = max(0, len(m.inbox)-1)
-				m.clampOffset(1)
-			}
+			m.cursor = max(0, len(m.items)-1)
+			m.clampOffset()
 		case "t":
 			types := []ticket.TicketType{"", ticket.TypeFeature, ticket.TypeBug, ticket.TypeTask, ticket.TypeEpic, ticket.TypeChore}
 			for i, tt := range types {
@@ -167,46 +192,18 @@ func (m dashboardModel) update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 					break
 				}
 			}
-			m.buildPanes()
+			m.buildItems()
 		case "/":
 			m.filterActive = true
 			m.filterText = ""
 		case "esc":
 			if m.filterText != "" {
 				m.filterText = ""
-				m.buildPanes()
+				m.buildItems()
 			}
 		}
 	}
 	return m, nil
-}
-
-func (m *dashboardModel) clampOffset(pane int) {
-	visible := m.visibleRows()
-	if pane == 0 {
-		if m.triageCursor < m.triageOffset {
-			m.triageOffset = m.triageCursor
-		}
-		if m.triageCursor >= m.triageOffset+visible {
-			m.triageOffset = m.triageCursor - visible + 1
-		}
-	} else {
-		if m.inboxCursor < m.inboxOffset {
-			m.inboxOffset = m.inboxCursor
-		}
-		if m.inboxCursor >= m.inboxOffset+visible {
-			m.inboxOffset = m.inboxCursor - visible + 1
-		}
-	}
-}
-
-func (m dashboardModel) visibleRows() int {
-	// Reserve: 1 filter bar, 1 header, 1 help bar.
-	rows := m.height - 3
-	if rows < 1 {
-		rows = 1
-	}
-	return rows
 }
 
 func (m dashboardModel) view() string {
@@ -214,136 +211,78 @@ func (m dashboardModel) view() string {
 		return ""
 	}
 
-	paneWidth := m.width / 2
-	if paneWidth < 20 {
-		paneWidth = 20
-	}
-	visible := m.visibleRows()
-
-	leftPane := m.renderPane("TRIAGE", m.triage, m.triageCursor, m.triageOffset, m.focusPane == 0, paneWidth, visible)
-	rightPane := m.renderPane("INBOX", m.inbox, m.inboxCursor, m.inboxOffset, m.focusPane == 1, paneWidth, visible)
-
-	// Join side by side.
-	leftLines := strings.Split(leftPane, "\n")
-	rightLines := strings.Split(rightPane, "\n")
-	maxLines := len(leftLines)
-	if len(rightLines) > maxLines {
-		maxLines = len(rightLines)
-	}
-
-	var rows []string
-	for i := 0; i < maxLines; i++ {
-		left := ""
-		right := ""
-		if i < len(leftLines) {
-			left = leftLines[i]
-		}
-		if i < len(rightLines) {
-			right = rightLines[i]
-		}
-		// Pad left to pane width.
-		leftW := lipgloss.Width(left)
-		if leftW < paneWidth {
-			left += strings.Repeat(" ", paneWidth-leftW)
-		}
-		rows = append(rows, left+right)
-	}
-
-	content := strings.Join(rows, "\n")
-
-	// Filter bar.
-	var filterLine string
-	if m.filterActive {
-		filterLine = filterStyle.Render("/ " + m.filterText + "█")
-	} else if m.filterText != "" {
-		filterLine = filterStyle.Render("filter: " + m.filterText + "  (/ to edit, esc clears)")
-	} else {
-		var parts []string
-		if m.typeFilter != "" {
-			parts = append(parts, fmt.Sprintf("type: %s", m.typeFilter))
-		}
-		parts = append(parts, "(t type, / search, P pipeline)")
-		filterLine = filterStyle.Render(strings.Join(parts, "  "))
-	}
-
-	// Help bar.
-	help := dashHelpStyle.Render("tab pane  ↑↓/jk nav  enter open  p priority  c create  P pipeline  q quit")
-
-	return content + "\n" + filterLine + "\n" + help
-}
-
-func (m dashboardModel) renderPane(title string, items []ticket.InboxItem, cursor, offset int, focused bool, width, visible int) string {
 	var b strings.Builder
 
-	// Header.
-	headerText := fmt.Sprintf(" %s (%d)", title, len(items))
-	if focused {
-		b.WriteString(paneHeaderStyle.Render(paneActiveStyle.Render(headerText)))
-	} else {
-		b.WriteString(paneHeaderStyle.Render(paneDimStyle.Render(headerText)))
+	// Tabs.
+	var tabs []string
+	for i, label := range tabLabels {
+		if inboxTab(i) == m.tab {
+			tabs = append(tabs, tabActiveStyle.Render(label))
+		} else {
+			tabs = append(tabs, tabDimStyle.Render(label))
+		}
 	}
+	b.WriteString(strings.Join(tabs, "  "))
 	b.WriteString("\n")
 
-	// Items.
-	end := offset + visible
-	if end > len(items) {
-		end = len(items)
+	// Header.
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7"))
+	b.WriteString(headerStyle.Render(fmt.Sprintf("%-3s %-5s %-10s %-24s %s", "P", "TYPE", "STAGE", "ID", "TITLE")))
+	b.WriteString("\n")
+
+	// Rows.
+	visible := m.visibleRows()
+	end := m.offset + visible
+	if end > len(m.items) {
+		end = len(m.items)
 	}
 
-	for i := offset; i < end; i++ {
-		item := items[i]
-		line := m.renderItem(item, width)
-		if focused && i == cursor {
-			padded := line
-			lineLen := lipgloss.Width(padded)
-			if lineLen < width {
-				padded += strings.Repeat(" ", width-lineLen)
-			}
-			b.WriteString(rowSelected.Render(padded))
-		} else {
-			b.WriteString(line)
-		}
+	for i := m.offset; i < end; i++ {
+		b.WriteString(m.renderRow(m.items[i], i == m.cursor))
 		b.WriteString("\n")
 	}
 
 	// Pad empty rows.
-	for i := end - offset; i < visible; i++ {
+	for i := end - m.offset; i < visible; i++ {
 		b.WriteString("\n")
+	}
+
+	// Filter / help bar.
+	if m.filterActive {
+		b.WriteString(filterStyle.Render("/ " + m.filterText + "█"))
+	} else if m.filterText != "" {
+		b.WriteString(filterStyle.Render("filter: " + m.filterText + "  (/ to edit, esc clears)"))
+	} else {
+		help := "tab ↑↓ / t filter  │  enter (o)pen (c)reate (e)dit  │  (p)riority  │  (q)uit"
+		b.WriteString(dashHelpStyle.Render(help))
 	}
 
 	return b.String()
 }
 
-func (m dashboardModel) renderItem(item ticket.InboxItem, width int) string {
+func (m dashboardModel) renderRow(item ticket.InboxItem, selected bool) string {
 	t := item.Ticket
 	pStyle := lipgloss.NewStyle().Foreground(priorityColors[t.Priority])
 	tStyle := lipgloss.NewStyle().Foreground(typeColors[t.Type])
 
+	stage := string(t.Stage)
+	stageColor := stageColors[t.Stage]
+	sStyle := lipgloss.NewStyle().Foreground(stageColor)
+
 	pri := pStyle.Render(fmt.Sprintf("P%d", t.Priority))
 	typ := tStyle.Render(fmt.Sprintf("%-5s", shortType(t.Type)))
+	stg := sStyle.Render(fmt.Sprintf("%-10s", stage))
 
 	// Review indicator.
 	var rev string
 	if t.Review == ticket.ReviewPending {
-		rev = lipgloss.NewStyle().Foreground(reviewColors[t.Review]).Render(" ●")
+		rev = lipgloss.NewStyle().Foreground(reviewColors[t.Review]).Render("● ")
 	}
 
-	line := fmt.Sprintf("%s %s %s%s", pri, typ, t.ID, rev)
-
-	// Detail text (action needed).
-	detail := " " + detailStyle.Render(item.Detail)
-
-	// Title — use remaining space.
-	usedWidth := lipgloss.Width(line) + 1
-	titleSpace := width - usedWidth - lipgloss.Width(detail) - 1
-	title := t.Title
-	if titleSpace > 3 && len(title) > 0 {
-		if len(title) > titleSpace {
-			title = title[:titleSpace-1] + "…"
-		}
-		line += " " + title
+	idText := fmt.Sprintf("%-24s", t.ID)
+	if selected {
+		idText = dashRowSel.Render(idText)
 	}
-	line += detail
 
-	return line
+	return fmt.Sprintf("%s  %s %s %s%s %s", pri, typ, stg, rev, idText, t.Title)
 }

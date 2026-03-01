@@ -3,9 +3,8 @@
 ## [Unreleased]
 
 ### Changed
-- TUI default view is now a two-pane dashboard: **Triage** (tickets needing triage) + **Inbox** (tickets needing human action — reviews, verification)
-- Pipeline kanban view accessible via `P` from dashboard, `esc` to return
-- Removed status-based list view entirely
+- TUI default view is now a single-pane inbox with tabbed filters: all, triage, verify, review
+- Removed status-based list view and pipeline kanban as default — focused on human decision points
 - Pipeline view now supports text search (`/`), priority cycling (`p`), and create (`c`)
 
 ### Fixed

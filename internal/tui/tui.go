@@ -186,10 +186,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if t := a.dashboard.selected(); t != nil {
 					return a, func() tea.Msg { return cyclePriorityMsg{id: t.ID} }
 				}
-			case "P":
-				a.pipeline = newPipelineModel(a.tickets, a.width, a.height)
-				a.current = viewPipeline
-				return a, nil
 			}
 
 		case viewDetail:
