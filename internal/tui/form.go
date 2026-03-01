@@ -32,16 +32,29 @@ const (
 	fieldType
 	fieldPriority
 	fieldAssignee
+	fieldNote
 	fieldCount
 )
 
 type formModel struct {
+	editID   string // non-empty = edit mode
 	fields   [fieldCount]string
 	focus    formField
 	typeIdx  int
 	priority int
 	width    int
 	height   int
+}
+
+func (m formModel) lastField() formField {
+	if m.editID != "" {
+		return fieldNote
+	}
+	return fieldAssignee
+}
+
+func (m formModel) isTextField(f formField) bool {
+	return f == fieldTitle || f == fieldDescription || f == fieldAssignee || f == fieldNote
 }
 
 func newFormModel(w, h int) formModel {
@@ -53,12 +66,43 @@ func newFormModel(w, h int) formModel {
 	}
 }
 
+func newEditFormModel(t *ticket.Ticket, w, h int) formModel {
+	typeIdx := 0
+	for i, tt := range ticketTypes {
+		if tt == t.Type {
+			typeIdx = i
+			break
+		}
+	}
+	m := formModel{
+		editID:   t.ID,
+		typeIdx:  typeIdx,
+		priority: t.Priority,
+		width:    w,
+		height:   h,
+	}
+	m.fields[fieldTitle] = t.Title
+	m.fields[fieldDescription] = extractDescription(t.Body)
+	m.fields[fieldAssignee] = t.Assignee
+	return m
+}
+
+func extractDescription(body string) string {
+	idx := strings.Index(body, "\n## ")
+	if idx >= 0 {
+		return strings.TrimSpace(body[:idx])
+	}
+	return strings.TrimSpace(body)
+}
+
 func (m *formModel) setSize(w, h int) {
 	m.width = w
 	m.height = h
 }
 
 func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
+	numFields := int(m.lastField()) + 1
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -66,9 +110,9 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 			return m, func() tea.Msg { return formCancelMsg{} }
 
 		case "tab", "down":
-			m.focus = (m.focus + 1) % fieldCount
+			m.focus = formField((int(m.focus) + 1) % numFields)
 		case "shift+tab", "up":
-			m.focus = (m.focus - 1 + fieldCount) % fieldCount
+			m.focus = formField((int(m.focus) - 1 + numFields) % numFields)
 
 		case "enter":
 			if m.focus == fieldType {
@@ -97,7 +141,7 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 			}
 
 		case "backspace":
-			if m.focus == fieldTitle || m.focus == fieldDescription || m.focus == fieldAssignee {
+			if m.isTextField(m.focus) {
 				f := &m.fields[m.focus]
 				if len(*f) > 0 {
 					*f = (*f)[:len(*f)-1]
@@ -105,7 +149,7 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 			}
 
 		default:
-			if m.focus == fieldTitle || m.focus == fieldDescription || m.focus == fieldAssignee {
+			if m.isTextField(m.focus) {
 				if len(msg.String()) == 1 {
 					m.fields[m.focus] += msg.String()
 				}
@@ -121,23 +165,30 @@ func (m formModel) submit() tea.Msg {
 		return nil
 	}
 	return formSubmitMsg{
+		editID:      m.editID,
 		title:       title,
 		description: strings.TrimSpace(m.fields[fieldDescription]),
 		ticketType:  ticketTypes[m.typeIdx],
 		priority:    m.priority,
 		assignee:    strings.TrimSpace(m.fields[fieldAssignee]),
+		note:        strings.TrimSpace(m.fields[fieldNote]),
 	}
 }
 
 func (m formModel) view() string {
 	var b strings.Builder
 
-	b.WriteString(formTitleStyle.Render("Create New Ticket"))
+	if m.editID != "" {
+		b.WriteString(formTitleStyle.Render("Edit Ticket"))
+	} else {
+		b.WriteString(formTitleStyle.Render("Create New Ticket"))
+	}
 	b.WriteString("\n\n")
 
-	labels := [fieldCount]string{"Title:", "Description:", "Type:", "Priority:", "Assignee:"}
+	labels := [fieldCount]string{"Title:", "Description:", "Type:", "Priority:", "Assignee:", "Note:"}
+	last := m.lastField()
 
-	for i := formField(0); i < fieldCount; i++ {
+	for i := formField(0); i <= last; i++ {
 		label := formLabelStyle.Render(labels[i])
 		var val string
 
@@ -171,7 +222,7 @@ func (m formModel) view() string {
 		cursor := "  "
 		if i == m.focus {
 			cursor = formCursorStyle.Render("> ")
-			if i == fieldTitle || i == fieldDescription || i == fieldAssignee {
+			if m.isTextField(i) {
 				val = formActiveStyle.Render(val + "█")
 			}
 		}
@@ -188,11 +239,13 @@ func (m formModel) view() string {
 
 // Messages
 type formSubmitMsg struct {
+	editID      string // non-empty = edit mode
 	title       string
 	description string
 	ticketType  ticket.TicketType
 	priority    int
 	assignee    string
+	note        string
 }
 
 type formCancelMsg struct{}

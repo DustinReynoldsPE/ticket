@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- TUI edit mode (`e`) — edit title, description, type, priority, assignee, and add notes from the form view
+- TUI `o` key as alias for `enter` to open ticket detail
+
 ### Changed
 - TUI default view is now a single-pane inbox with tabbed filters: all, triage, verify, review
 - Removed status-based list view and pipeline kanban as default — focused on human decision points
 - Pipeline view now supports text search (`/`), priority cycling (`p`), and create (`c`)
+- TUI detail view help bar uses consistent `(k)ey` format with `│` separators
 
 ### Fixed
 - MCP `ticket_create` didn't set `created` timestamp — tickets created via MCP had zero-value dates

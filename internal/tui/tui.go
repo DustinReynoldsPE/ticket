@@ -150,6 +150,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case addNoteMsg:
 		return a, a.handleAddNote(msg.id, msg.text)
 	case formSubmitMsg:
+		if msg.editID != "" {
+			return a, a.handleEditTicket(msg)
+		}
 		return a, a.handleCreateTicket(msg)
 	case advanceMsg:
 		return a, a.handleAdvance(msg.id, msg.force)
@@ -175,11 +178,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.prevView = viewDashboard
 				a.current = viewForm
 				return a, nil
-			case "enter":
+			case "enter", "o":
 				if t := a.dashboard.selected(); t != nil {
 					a.detail = newDetailModel(t, a.width, a.height)
 					a.prevView = viewDashboard
 					a.current = viewDetail
+					return a, nil
+				}
+			case "e":
+				if t := a.dashboard.selected(); t != nil {
+					a.form = newEditFormModel(t, a.width, a.height)
+					a.prevView = viewDashboard
+					a.current = viewForm
 					return a, nil
 				}
 			case "p":
@@ -205,6 +215,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			case "n":
 				a.detail.startInput(inputNote)
+				return a, nil
+			case "e":
+				a.form = newEditFormModel(a.detail.ticket, a.width, a.height)
+				a.prevView = viewDetail
+				a.current = viewForm
 				return a, nil
 			}
 
@@ -466,6 +481,46 @@ func (a *App) handleCreateTicket(msg formSubmitMsg) tea.Cmd {
 
 	a.current = a.prevView
 	status := fmt.Sprintf("Created %s: %s", t.ID, t.Title)
+	return tea.Batch(
+		loadTickets(a.store),
+		func() tea.Msg { return statusMsg(status) },
+	)
+}
+
+func (a *App) handleEditTicket(msg formSubmitMsg) tea.Cmd {
+	t, err := a.store.Get(msg.editID)
+	if err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	t.Title = msg.title
+	t.Type = msg.ticketType
+	t.Priority = msg.priority
+	t.Assignee = msg.assignee
+
+	// Update description (text before first ## heading).
+	t.Body = ticket.UpdateSection(t.Body, "", msg.description)
+
+	// Add note if provided.
+	if msg.note != "" {
+		t.Notes = append(t.Notes, ticket.Note{
+			Timestamp: time.Now().UTC(),
+			Text:      msg.note,
+		})
+		// Strip existing notes section from body to avoid duplication.
+		if idx := strings.Index(t.Body, "\n## Notes\n"); idx >= 0 {
+			t.Body = t.Body[:idx+1]
+		} else if strings.HasPrefix(t.Body, "## Notes\n") {
+			t.Body = "\n"
+		}
+	}
+
+	if err := a.store.Update(t); err != nil {
+		return func() tea.Msg { return statusMsg("error: " + err.Error()) }
+	}
+
+	a.current = a.prevView
+	status := fmt.Sprintf("Updated %s", t.ID)
 	return tea.Batch(
 		loadTickets(a.store),
 		func() tea.Msg { return statusMsg(status) },

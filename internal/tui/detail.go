@@ -186,7 +186,7 @@ func (m detailModel) view() string {
 	if m.input != inputNone {
 		help = "enter confirm  esc cancel"
 	} else {
-		help = "↑↓/jk scroll  s status  p priority  a assignee  n note  esc back  q quit"
+		help = "↑↓/jk scroll  │  (e)dit (p)riority (a)ssignee (n)ote  │  esc back  (q)uit"
 	}
 	b.WriteString(detailHelpStyle.Render(help))
 
