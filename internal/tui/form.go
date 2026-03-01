@@ -39,6 +39,7 @@ const (
 type formModel struct {
 	editID   string // non-empty = edit mode
 	fields   [fieldCount]string
+	cursors  [fieldCount]int // cursor position per text field
 	focus    formField
 	typeIdx  int
 	priority int
@@ -84,6 +85,9 @@ func newEditFormModel(t *ticket.Ticket, w, h int) formModel {
 	m.fields[fieldTitle] = t.Title
 	m.fields[fieldDescription] = extractDescription(t.Body)
 	m.fields[fieldAssignee] = t.Assignee
+	m.cursors[fieldTitle] = len(m.fields[fieldTitle])
+	m.cursors[fieldDescription] = len(m.fields[fieldDescription])
+	m.cursors[fieldAssignee] = len(m.fields[fieldAssignee])
 	return m
 }
 
@@ -124,7 +128,11 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 			}
 
 		case "left":
-			if m.focus == fieldType {
+			if m.isTextField(m.focus) {
+				if m.cursors[m.focus] > 0 {
+					m.cursors[m.focus]--
+				}
+			} else if m.focus == fieldType {
 				m.typeIdx = (m.typeIdx - 1 + len(ticketTypes)) % len(ticketTypes)
 			} else if m.focus == fieldPriority {
 				if m.priority > 0 {
@@ -132,26 +140,43 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 				}
 			}
 		case "right":
-			if m.focus == fieldType {
+			if m.isTextField(m.focus) {
+				if m.cursors[m.focus] < len(m.fields[m.focus]) {
+					m.cursors[m.focus]++
+				}
+			} else if m.focus == fieldType {
 				m.typeIdx = (m.typeIdx + 1) % len(ticketTypes)
 			} else if m.focus == fieldPriority {
 				if m.priority < 4 {
 					m.priority++
 				}
 			}
+		case "home", "ctrl+a":
+			if m.isTextField(m.focus) {
+				m.cursors[m.focus] = 0
+			}
+		case "end", "ctrl+e":
+			if m.isTextField(m.focus) {
+				m.cursors[m.focus] = len(m.fields[m.focus])
+			}
 
 		case "backspace":
 			if m.isTextField(m.focus) {
-				f := &m.fields[m.focus]
-				if len(*f) > 0 {
-					*f = (*f)[:len(*f)-1]
+				pos := m.cursors[m.focus]
+				text := m.fields[m.focus]
+				if pos > 0 {
+					m.fields[m.focus] = text[:pos-1] + text[pos:]
+					m.cursors[m.focus] = pos - 1
 				}
 			}
 
 		default:
 			if m.isTextField(m.focus) {
 				if len(msg.String()) == 1 {
-					m.fields[m.focus] += msg.String()
+					pos := m.cursors[m.focus]
+					text := m.fields[m.focus]
+					m.fields[m.focus] = text[:pos] + msg.String() + text[pos:]
+					m.cursors[m.focus] = pos + 1
 				}
 			}
 		}
@@ -217,21 +242,42 @@ func (m formModel) view() string {
 			val = strings.Join(parts, "  ")
 		default:
 			val = m.fields[i]
+			avail := m.width - 18 // 2 cursor + 14 label + 1 space + 1 block cursor
+			if i == m.focus && m.isTextField(i) {
+				// Render with cursor at position, viewport follows cursor.
+				pos := m.cursors[i]
+				if avail > 0 && len(val) > avail {
+					// Compute viewport window around cursor.
+					start := 0
+					if pos > avail-1 {
+						start = pos - avail + 1
+					}
+					end := start + avail
+					if end > len(val) {
+						end = len(val)
+						start = end - avail
+					}
+					val = val[start:end]
+					pos = pos - start
+				}
+				before := val[:pos]
+				after := val[pos:]
+				val = formActiveStyle.Render(before) + formCursorStyle.Render("█") + formActiveStyle.Render(after)
+			} else if avail > 0 && len(val) > avail {
+				val = val[:avail-1] + "…"
+			}
 		}
 
 		cursor := "  "
 		if i == m.focus {
 			cursor = formCursorStyle.Render("> ")
-			if m.isTextField(i) {
-				val = formActiveStyle.Render(val + "█")
-			}
 		}
 
 		b.WriteString(cursor + label + " " + val + "\n")
 	}
 
 	b.WriteString("\n")
-	help := "tab/↑↓ fields  enter submit/cycle  ←→ cycle  esc cancel"
+	help := "tab/↑↓ fields  ←→ move/cycle  enter submit  esc cancel"
 	b.WriteString(formHelpStyle.Render(help))
 
 	return b.String()
