@@ -32,6 +32,7 @@ const (
 	fieldType
 	fieldPriority
 	fieldAssignee
+	fieldStage
 	fieldNote
 	fieldCount
 )
@@ -43,6 +44,8 @@ type formModel struct {
 	focus    formField
 	typeIdx  int
 	priority int
+	stageIdx int
+	stages   []ticket.Stage // valid stages for ticket type
 	width    int
 	height   int
 }
@@ -52,6 +55,10 @@ func (m formModel) lastField() formField {
 		return fieldNote
 	}
 	return fieldAssignee
+}
+
+func (m formModel) isEditOnlyField(f formField) bool {
+	return f == fieldStage || f == fieldNote
 }
 
 func (m formModel) isTextField(f formField) bool {
@@ -75,10 +82,21 @@ func newEditFormModel(t *ticket.Ticket, w, h int) formModel {
 			break
 		}
 	}
+	stages, _ := ticket.PipelineFor(t.Type)
+	stageIdx := 0
+	for i, s := range stages {
+		if s == t.Stage {
+			stageIdx = i
+			break
+		}
+	}
+
 	m := formModel{
 		editID:   t.ID,
 		typeIdx:  typeIdx,
 		priority: t.Priority,
+		stageIdx: stageIdx,
+		stages:   stages,
 		width:    w,
 		height:   h,
 	}
@@ -123,6 +141,8 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 				m.typeIdx = (m.typeIdx + 1) % len(ticketTypes)
 			} else if m.focus == fieldPriority {
 				m.priority = (m.priority + 1) % 5
+			} else if m.focus == fieldStage && len(m.stages) > 0 {
+				m.stageIdx = (m.stageIdx + 1) % len(m.stages)
 			} else {
 				return m, m.submit
 			}
@@ -138,6 +158,8 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 				if m.priority > 0 {
 					m.priority--
 				}
+			} else if m.focus == fieldStage && len(m.stages) > 0 {
+				m.stageIdx = (m.stageIdx - 1 + len(m.stages)) % len(m.stages)
 			}
 		case "right":
 			if m.isTextField(m.focus) {
@@ -150,6 +172,8 @@ func (m formModel) update(msg tea.Msg) (formModel, tea.Cmd) {
 				if m.priority < 4 {
 					m.priority++
 				}
+			} else if m.focus == fieldStage && len(m.stages) > 0 {
+				m.stageIdx = (m.stageIdx + 1) % len(m.stages)
 			}
 		case "home", "ctrl+a":
 			if m.isTextField(m.focus) {
@@ -189,7 +213,7 @@ func (m formModel) submit() tea.Msg {
 	if title == "" {
 		return nil
 	}
-	return formSubmitMsg{
+	msg := formSubmitMsg{
 		editID:      m.editID,
 		title:       title,
 		description: strings.TrimSpace(m.fields[fieldDescription]),
@@ -198,6 +222,10 @@ func (m formModel) submit() tea.Msg {
 		assignee:    strings.TrimSpace(m.fields[fieldAssignee]),
 		note:        strings.TrimSpace(m.fields[fieldNote]),
 	}
+	if len(m.stages) > 0 {
+		msg.stage = m.stages[m.stageIdx]
+	}
+	return msg
 }
 
 func (m formModel) view() string {
@@ -210,7 +238,7 @@ func (m formModel) view() string {
 	}
 	b.WriteString("\n\n")
 
-	labels := [fieldCount]string{"Title:", "Description:", "Type:", "Priority:", "Assignee:", "Note:"}
+	labels := [fieldCount]string{"Title:", "Description:", "Type:", "Priority:", "Assignee:", "Stage:", "Note:"}
 	last := m.lastField()
 
 	for i := formField(0); i <= last; i++ {
@@ -238,6 +266,18 @@ func (m formModel) view() string {
 					s = formCursorStyle.Render("[" + s + "]")
 				}
 				parts = append(parts, s)
+			}
+			val = strings.Join(parts, "  ")
+		case fieldStage:
+			var parts []string
+			for j, s := range m.stages {
+				text := string(s)
+				stageColor := stageColors[s]
+				styled := lipgloss.NewStyle().Foreground(stageColor).Render(text)
+				if j == m.stageIdx {
+					styled = formCursorStyle.Render("[" + styled + "]")
+				}
+				parts = append(parts, styled)
 			}
 			val = strings.Join(parts, "  ")
 		default:
@@ -291,6 +331,7 @@ type formSubmitMsg struct {
 	ticketType  ticket.TicketType
 	priority    int
 	assignee    string
+	stage       ticket.Stage
 	note        string
 }
 

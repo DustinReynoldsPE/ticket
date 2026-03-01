@@ -5,7 +5,7 @@
 ### Added
 - TUI `v` key on verify tab advances ticket to next stage; `R` on review tab approves review
 - TUI file watcher — auto-reloads tickets when `.tickets/` directory changes (fsnotify with 200ms debounce)
-- TUI edit mode (`e`) — edit title, description, type, priority, assignee, and add notes from the form view
+- TUI edit mode (`e`) — edit title, description, type, priority, assignee, stage, and add notes from the form view
 - TUI `o` key as alias for `enter` to open ticket detail
 
 ### Changed

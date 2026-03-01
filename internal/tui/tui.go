@@ -522,6 +522,9 @@ func (a *App) handleEditTicket(msg formSubmitMsg) tea.Cmd {
 	t.Type = msg.ticketType
 	t.Priority = msg.priority
 	t.Assignee = msg.assignee
+	if msg.stage != "" {
+		t.Stage = msg.stage
+	}
 
 	// Update description (text before first ## heading).
 	t.Body = ticket.UpdateSection(t.Body, "", msg.description)
