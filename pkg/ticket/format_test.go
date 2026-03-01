@@ -488,3 +488,58 @@ Decision: use JWT for auth.
 		t.Errorf("note text = %q, should contain JWT", tk.Notes[0].Text)
 	}
 }
+
+func TestSerialize_BodyNoBlankLineAccumulation(t *testing.T) {
+	// Start with a leading newline in Body — the form that triggered the bug.
+	tk := &Ticket{
+		ID:       "t-accum",
+		Status:   StatusOpen,
+		Stage:    "implement",
+		Type:     TypeBug,
+		Priority: 0,
+		Deps:     []string{},
+		Links:    []string{},
+		Created:  time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC),
+		Title:    "Body should not accumulate blank lines",
+		Body:     "\nDescription text here.\n",
+		Notes: []Note{{
+			Timestamp: time.Date(2026, 2, 28, 1, 0, 0, 0, time.UTC),
+			Text:      "A note.",
+		}},
+	}
+
+	// Simulate 10 round-trips (parse → serialize → parse → ...).
+	for i := 0; i < 10; i++ {
+		data, err := Serialize(tk)
+		if err != nil {
+			t.Fatalf("round %d Serialize: %v", i, err)
+		}
+		tk, err = Parse(strings.NewReader(string(data)))
+		if err != nil {
+			t.Fatalf("round %d Parse: %v", i, err)
+		}
+	}
+
+	data, err := Serialize(tk)
+	if err != nil {
+		t.Fatalf("final Serialize: %v", err)
+	}
+	s := string(data)
+
+	// Positive check: title followed by exactly one blank line then description.
+	want := "# Body should not accumulate blank lines\n\nDescription text here.\n"
+	if !strings.Contains(s, want) {
+		t.Errorf("expected title + one blank line + description, got:\n%s", s)
+	}
+	// Negative check: no triple newline anywhere.
+	if strings.Contains(s, "\n\n\n") {
+		t.Errorf("found triple newline after 10 round-trips:\n%s", s)
+	}
+	// Notes should still be present.
+	if !strings.Contains(s, "## Notes") {
+		t.Error("notes section missing after round-trips")
+	}
+	if !strings.Contains(s, "A note.") {
+		t.Error("note text missing after round-trips")
+	}
+}

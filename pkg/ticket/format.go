@@ -233,7 +233,7 @@ func parseBody(t *Ticket, body string) {
 		t.Notes = parseNotes(rest[sectionStart:])
 	}
 
-	t.Body = strings.TrimRight(t.Body, "\n") + "\n"
+	t.Body = strings.TrimSpace(t.Body) + "\n"
 }
 
 // parseNotes extracts timestamped notes from the notes section.
