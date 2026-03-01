@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- TUI file watcher — auto-reloads tickets when `.tickets/` directory changes (fsnotify with 200ms debounce)
 - TUI edit mode (`e`) — edit title, description, type, priority, assignee, and add notes from the form view
 - TUI `o` key as alias for `enter` to open ticket detail
 

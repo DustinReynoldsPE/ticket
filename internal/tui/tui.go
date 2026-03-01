@@ -21,26 +21,28 @@ const (
 
 // App is the top-level bubbletea model.
 type App struct {
-	store     *ticket.FileStore
-	tickets   []*ticket.Ticket
-	dashboard dashboardModel
-	detail    detailModel
-	form      formModel
-	pipeline  pipelineModel
-	current   view
-	prevView  view // view to return to from detail/form
-	width     int
-	height    int
-	status    string // transient status message
-	err       error
+	store      *ticket.FileStore
+	ticketsDir string
+	tickets    []*ticket.Ticket
+	dashboard  dashboardModel
+	detail     detailModel
+	form       formModel
+	pipeline   pipelineModel
+	current    view
+	prevView   view // view to return to from detail/form
+	width      int
+	height     int
+	status     string // transient status message
+	err        error
 }
 
 // New creates a new App rooted at the given ticket directory.
 func New(ticketsDir string) App {
 	store := ticket.NewFileStore(ticketsDir)
 	return App{
-		store:   store,
-		current: viewDashboard,
+		store:      store,
+		ticketsDir: ticketsDir,
+		current:    viewDashboard,
 	}
 }
 
@@ -101,7 +103,10 @@ func clearStatusAfter(d time.Duration) tea.Cmd {
 }
 
 func (a App) Init() tea.Cmd {
-	return loadTickets(a.store)
+	return tea.Batch(
+		loadTickets(a.store),
+		watchTickets(a.ticketsDir),
+	)
 }
 
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -114,6 +119,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.form.setSize(a.width, a.height)
 		a.pipeline.setSize(a.width, a.height)
 		return a, nil
+
+	case fileChangedMsg:
+		return a, tea.Batch(
+			loadTickets(a.store),
+			watchTickets(a.ticketsDir),
+		)
 
 	case ticketsLoadedMsg:
 		a.tickets = msg
