@@ -494,3 +494,73 @@ func TestVersionIncrements(t *testing.T) {
 		t.Errorf("version after edit = %v, want 2", v)
 	}
 }
+
+func TestLinkSession(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	// Link a session.
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_link_session",
+		Arguments: map[string]any{
+			"id":         id,
+			"session_id": "sess-abc-123",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("link-session returned error: %s", result.Content[0].(*mcp.TextContent).Text)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	convs, ok := ticket["conversations"].([]any)
+	if !ok || len(convs) != 1 || convs[0] != "sess-abc-123" {
+		t.Errorf("conversations = %v, want [sess-abc-123]", ticket["conversations"])
+	}
+
+	// Link same session again — should deduplicate.
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_link_session",
+		Arguments: map[string]any{
+			"id":         id,
+			"session_id": "sess-abc-123",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = result.Content[0].(*mcp.TextContent).Text
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	convs = ticket["conversations"].([]any)
+	if len(convs) != 1 {
+		t.Errorf("expected 1 conversation after dedup, got %d", len(convs))
+	}
+
+	// Link a second session.
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_link_session",
+		Arguments: map[string]any{
+			"id":         id,
+			"session_id": "sess-def-456",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = result.Content[0].(*mcp.TextContent).Text
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	convs = ticket["conversations"].([]any)
+	if len(convs) != 2 {
+		t.Errorf("expected 2 conversations, got %d", len(convs))
+	}
+}

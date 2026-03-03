@@ -37,6 +37,7 @@ func NewServer(ticketsDir string) *mcp.Server {
 	registerMigrate(server, store)
 	registerInbox(server, store)
 	registerClaim(server, store)
+	registerLinkSession(server, store)
 
 	return server
 }
@@ -841,6 +842,46 @@ func registerClaim(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		t, _ := store.Get(args.ID)
+		r, jsonErr := jsonResult(toJSON(t))
+		return r, nil, jsonErr
+	})
+}
+
+type linkSessionArgs struct {
+	ID        string `json:"id" jsonschema:"ticket ID"`
+	SessionID string `json:"session_id" jsonschema:"conversation or session ID to link"`
+}
+
+func registerLinkSession(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_link_session",
+		Description: "Link a conversation/session ID to a ticket for traceability.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args linkSessionArgs) (*mcp.CallToolResult, any, error) {
+		if args.SessionID == "" {
+			r, _ := errResult("session_id is required")
+			return r, nil, nil
+		}
+
+		t, err := store.Get(args.ID)
+		if err != nil {
+			r, _ := errResult("ticket not found: %v", err)
+			return r, nil, nil
+		}
+
+		for _, c := range t.Conversations {
+			if c == args.SessionID {
+				r, jsonErr := jsonResult(toJSON(t))
+				return r, nil, jsonErr
+			}
+		}
+
+		t.Conversations = append(t.Conversations, args.SessionID)
+		if err := store.Update(t); err != nil {
+			r, _ := errResult("failed to update ticket: %v", err)
+			return r, nil, nil
+		}
+
+		t, _ = store.Get(t.ID)
 		r, jsonErr := jsonResult(toJSON(t))
 		return r, nil, jsonErr
 	})

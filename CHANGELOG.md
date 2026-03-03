@@ -7,6 +7,7 @@
 - `ticket_claim` MCP tool for AI agent access to claim
 - Optimistic locking via `version` counter in frontmatter — concurrent updates to the same ticket are rejected with a conflict error
 - Append-only event log at `.tickets/.log` — records create, delete, stage/status transitions, and claim events
+- `tk link-session <id> <session-id>` command and `ticket_link_session` MCP tool for conversation/session traceability
 
 ## [2.4.0] - 2026-03-01
 
