@@ -1,7 +1,7 @@
 ---
 id: add-claim-command-1be4
 stage: triage
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-03-03T15:04:17Z
