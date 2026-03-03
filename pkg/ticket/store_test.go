@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -255,5 +256,59 @@ func TestFileStore_RealTicketsDir(t *testing.T) {
 				t.Logf("partial resolve of %q (from %s): %v (may be ambiguous, OK)", parts[2:], first.ID, err)
 			}
 		}
+	}
+}
+
+func TestFileStore_EventLog(t *testing.T) {
+	store, _ := testStore(t)
+	logPath := filepath.Join(store.Dir, ".log")
+
+	// Create should log "created".
+	tk := sampleTicket("t-log1")
+	if err := store.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if !strings.Contains(string(data), "t-log1 created") {
+		t.Errorf("log missing create event: %s", data)
+	}
+
+	// Update with status change should log "status".
+	tk.Status = StatusInProgress
+	if err := store.Update(tk); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	data, _ = os.ReadFile(logPath)
+	if !strings.Contains(string(data), "t-log1 status open→in_progress") {
+		t.Errorf("log missing status event: %s", data)
+	}
+
+	// Update with stage change should log "stage".
+	tk, _ = store.Get("t-log1")
+	tk.Stage = StageImplement
+	if err := store.Update(tk); err != nil {
+		t.Fatalf("Update stage: %v", err)
+	}
+	data, _ = os.ReadFile(logPath)
+	if !strings.Contains(string(data), "t-log1 stage →implement") {
+		t.Errorf("log missing stage event: %s", data)
+	}
+
+	// Delete should log "deleted".
+	if err := store.Delete("t-log1"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	data, _ = os.ReadFile(logPath)
+	if !strings.Contains(string(data), "t-log1 deleted") {
+		t.Errorf("log missing delete event: %s", data)
+	}
+
+	// Verify log is append-only (has all events).
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) < 4 {
+		t.Errorf("expected at least 4 log lines, got %d", len(lines))
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ErrConflict indicates a version mismatch during update — the ticket was
@@ -51,7 +52,11 @@ func (s *FileStore) Create(t *Ticket) error {
 	for i := 0; i < maxRetries; i++ {
 		path = s.ticketFile(t.ID)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return s.writeTicket(t)
+			if err := s.writeTicket(t); err != nil {
+				return err
+			}
+			s.appendLog(t.ID, "created")
+			return nil
 		}
 		t.ID = GenerateID(t.Title)
 	}
@@ -89,7 +94,24 @@ func (s *FileStore) Update(t *Ticket) error {
 	}
 
 	t.Version = disk.Version + 1
-	return s.writeTicket(t)
+	if err := s.writeTicket(t); err != nil {
+		return err
+	}
+
+	if disk.Stage != t.Stage && t.Stage != "" {
+		s.appendLog(t.ID, fmt.Sprintf("stage %s→%s", disk.Stage, t.Stage))
+	}
+	if disk.Status != t.Status && t.Status != "" {
+		s.appendLog(t.ID, fmt.Sprintf("status %s→%s", disk.Status, t.Status))
+	}
+	if disk.Assignee != t.Assignee {
+		if t.Assignee != "" {
+			s.appendLog(t.ID, fmt.Sprintf("claimed %s", t.Assignee))
+		} else {
+			s.appendLog(t.ID, "unclaimed")
+		}
+	}
+	return nil
 }
 
 // Delete removes a ticket file by exact or partial ID.
@@ -98,7 +120,12 @@ func (s *FileStore) Delete(id string) error {
 	if err != nil {
 		return err
 	}
-	return os.Remove(path)
+	ticketID := strings.TrimSuffix(filepath.Base(path), ".md")
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	s.appendLog(ticketID, "deleted")
+	return nil
 }
 
 // List reads all tickets from the directory.
@@ -186,4 +213,20 @@ func (s *FileStore) writeTicket(t *Ticket) error {
 		return err
 	}
 	return os.WriteFile(s.ticketFile(t.ID), data, 0o644)
+}
+
+func (s *FileStore) logFile() string {
+	return filepath.Join(s.Dir, ".log")
+}
+
+// appendLog writes a single event line to .tickets/.log.
+// Failures are silently ignored — logging must never block operations.
+func (s *FileStore) appendLog(ticketID, event string) {
+	line := fmt.Sprintf("%s %s %s\n", time.Now().UTC().Format(time.RFC3339), ticketID, event)
+	f, err := os.OpenFile(s.logFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(line)
 }
