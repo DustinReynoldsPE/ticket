@@ -296,3 +296,157 @@ func TestCreateTicketMissingTitle(t *testing.T) {
 		t.Error("expected error for missing title")
 	}
 }
+
+func createTestTicket(t *testing.T, session *mcp.ClientSession) string {
+	t.Helper()
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_create",
+		Arguments: map[string]any{
+			"title": "Claim test ticket",
+			"type":  "task",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	return ticket["id"].(string)
+}
+
+func TestClaimUnassigned(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:builder",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("claim returned error: %s", result.Content[0].(*mcp.TextContent).Text)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	if ticket["assignee"] != "agent:builder" {
+		t.Errorf("assignee = %q, want %q", ticket["assignee"], "agent:builder")
+	}
+}
+
+func TestClaimAlreadyAssignedFails(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	// First claim succeeds.
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:alpha",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Second claim by different agent fails.
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:beta",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Error("expected error when claiming ticket assigned to someone else")
+	}
+}
+
+func TestClaimForceOverride(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	// Claim as alpha.
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:alpha",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Force claim as beta.
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:beta",
+			"force":    true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("force claim returned error: %s", result.Content[0].(*mcp.TextContent).Text)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	if ticket["assignee"] != "agent:beta" {
+		t.Errorf("assignee = %q, want %q", ticket["assignee"], "agent:beta")
+	}
+}
+
+func TestClaimSameAssigneeNoop(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	// Claim as alpha.
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:alpha",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim again as alpha — should succeed (no-op).
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_claim",
+		Arguments: map[string]any{
+			"id":       id,
+			"assignee": "agent:alpha",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Errorf("re-claim by same assignee should not error: %s", result.Content[0].(*mcp.TextContent).Text)
+	}
+}

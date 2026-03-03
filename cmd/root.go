@@ -28,6 +28,7 @@ Viewing:
 Creating & Editing:
   create [title] [options]   Create ticket (interactive if no title)
   edit <id> [options]        Update ticket fields
+  claim <id> [options]       Claim ticket (set assignee with enforcement)
   add-note <id> [text]       Append timestamped note (stdin if no text)
   delete <id> [id...]        Delete ticket(s)
 

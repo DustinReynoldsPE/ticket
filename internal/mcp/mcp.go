@@ -36,6 +36,7 @@ func NewServer(ticketsDir string) *mcp.Server {
 	registerSkip(server, store)
 	registerMigrate(server, store)
 	registerInbox(server, store)
+	registerClaim(server, store)
 
 	return server
 }
@@ -817,6 +818,28 @@ func registerInbox(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		r, jsonErr := jsonResult(result)
+		return r, nil, jsonErr
+	})
+}
+
+type claimArgs struct {
+	ID       string `json:"id" jsonschema:"ticket ID"`
+	Assignee string `json:"assignee" jsonschema:"identity claiming the ticket"`
+	Force    bool   `json:"force,omitempty" jsonschema:"override existing assignment"`
+}
+
+func registerClaim(server *mcp.Server, store *ticket.FileStore) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ticket_claim",
+		Description: "Claim a ticket by setting its assignee. Fails if already assigned to someone else unless force=true.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args claimArgs) (*mcp.CallToolResult, any, error) {
+		if err := ticket.Claim(store, args.ID, args.Assignee, args.Force); err != nil {
+			r, _ := errResult("claim failed: %v", err)
+			return r, nil, nil
+		}
+
+		t, _ := store.Get(args.ID)
+		r, jsonErr := jsonResult(toJSON(t))
 		return r, nil, jsonErr
 	})
 }

@@ -327,6 +327,33 @@ func PropagateStage(store *FileStore, childID string) ([]StageChange, error) {
 	return changes, nil
 }
 
+// Claim sets the assignee on a ticket with enforcement. If the ticket is
+// already assigned to a different identity, it returns an error unless force
+// is true. Claiming a ticket you already own is a no-op.
+func Claim(store *FileStore, id, assignee string, force bool) error {
+	if assignee == "" {
+		return fmt.Errorf("assignee is required")
+	}
+
+	t, err := store.Get(id)
+	if err != nil {
+		return fmt.Errorf("ticket %s: %w", id, err)
+	}
+
+	if t.Assignee != "" && t.Assignee != assignee {
+		if !force {
+			return fmt.Errorf("ticket %s is already assigned to %q (use --force to override)", t.ID, t.Assignee)
+		}
+	}
+
+	if t.Assignee == assignee {
+		return nil
+	}
+
+	t.Assignee = assignee
+	return store.Update(t)
+}
+
 func to_done_compat(t *Ticket) Stage {
 	// Set done stage; also set status for backward compat.
 	t.Stage = StageDone

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `tk claim <id>` command with assignee enforcement — fails if already assigned to someone else, `--force` to override
+- `ticket_claim` MCP tool for AI agent access to claim
+
 ## [2.4.0] - 2026-03-01
 
 ### Fixed
