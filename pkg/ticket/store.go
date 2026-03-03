@@ -1,11 +1,16 @@
 package ticket
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// ErrConflict indicates a version mismatch during update — the ticket was
+// modified on disk since it was read into memory.
+var ErrConflict = errors.New("version conflict")
 
 // FileStore provides filesystem-backed CRUD operations for tickets.
 type FileStore struct {
@@ -39,6 +44,8 @@ func (s *FileStore) Create(t *Ticket) error {
 		return fmt.Errorf("ticket %s already exists", t.ID)
 	}
 
+	t.Version = 1
+
 	// Retry on hash collision (different title, same 4-char hash).
 	const maxRetries = 5
 	for i := 0; i < maxRetries; i++ {
@@ -61,15 +68,27 @@ func (s *FileStore) Get(id string) (*Ticket, error) {
 }
 
 // Update writes a ticket back to disk in canonical format.
+// If the on-disk version is newer than the in-memory version, the write is
+// rejected with ErrConflict. The version counter is incremented on success.
 func (s *FileStore) Update(t *Ticket) error {
 	if err := t.Validate(); err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
-	// Verify the file exists.
 	path := s.ticketFile(t.ID)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("ticket %s not found", t.ID)
+	disk, err := s.readFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("ticket %s not found", t.ID)
+		}
+		return err
 	}
+
+	if disk.Version != t.Version {
+		return fmt.Errorf("%w: ticket %s has version %d on disk, but update has version %d",
+			ErrConflict, t.ID, disk.Version, t.Version)
+	}
+
+	t.Version = disk.Version + 1
 	return s.writeTicket(t)
 }
 

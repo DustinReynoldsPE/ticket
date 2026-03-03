@@ -188,6 +188,7 @@ type Ticket struct {
 	Created     time.Time  `yaml:"created"`
 	Skipped     []Stage    `yaml:"skipped,omitempty,flow"`
 	Conversations []string `yaml:"conversations,omitempty,flow"`
+	Version       int      `yaml:"version,omitempty"`
 
 	// Parsed from markdown, not stored in frontmatter.
 	Title   string         `yaml:"-"`

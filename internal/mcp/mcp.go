@@ -59,6 +59,7 @@ type ticketJSON struct {
 	Tags          []string     `json:"tags,omitempty"`
 	Skipped       []string     `json:"skipped,omitempty"`
 	Conversations []string     `json:"conversations,omitempty"`
+	Version       int          `json:"version"`
 	Title         string       `json:"title"`
 	Description   string       `json:"description,omitempty"`
 	Design        string       `json:"design,omitempty"`
@@ -98,6 +99,7 @@ func toJSON(t *ticket.Ticket) ticketJSON {
 		Parent:        t.Parent,
 		Tags:          t.Tags,
 		Conversations: t.Conversations,
+		Version:       t.Version,
 		Title:         t.Title,
 	}
 

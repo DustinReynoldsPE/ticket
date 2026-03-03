@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -92,6 +93,40 @@ func TestFileStore_Update(t *testing.T) {
 	}
 	if got.Priority != 0 {
 		t.Errorf("Priority = %d, want 0", got.Priority)
+	}
+}
+
+func TestFileStore_UpdateVersionConflict(t *testing.T) {
+	store, _ := testStore(t)
+	tk := sampleTicket("t-conflict")
+	if err := store.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Read two copies of the same ticket.
+	a, err := store.Get("t-conflict")
+	if err != nil {
+		t.Fatalf("Get a: %v", err)
+	}
+	b, err := store.Get("t-conflict")
+	if err != nil {
+		t.Fatalf("Get b: %v", err)
+	}
+
+	// First update succeeds.
+	a.Priority = 0
+	if err := store.Update(a); err != nil {
+		t.Fatalf("Update a: %v", err)
+	}
+
+	// Second update with stale version fails.
+	b.Priority = 1
+	err = store.Update(b)
+	if err == nil {
+		t.Fatal("expected version conflict error, got nil")
+	}
+	if !errors.Is(err, ErrConflict) {
+		t.Errorf("expected ErrConflict, got: %v", err)
 	}
 }
 

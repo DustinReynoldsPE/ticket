@@ -450,3 +450,47 @@ func TestClaimSameAssigneeNoop(t *testing.T) {
 		t.Errorf("re-claim by same assignee should not error: %s", result.Content[0].(*mcp.TextContent).Text)
 	}
 }
+
+func TestVersionIncrements(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	// Newly created ticket should have version 1.
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	if v := ticket["version"].(float64); v != 1 {
+		t.Errorf("initial version = %v, want 1", v)
+	}
+
+	// Edit should increment to 2.
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_edit",
+		Arguments: map[string]any{
+			"id":    id,
+			"title": "Updated title",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("edit returned error: %s", result.Content[0].(*mcp.TextContent).Text)
+	}
+	text = result.Content[0].(*mcp.TextContent).Text
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+	if v := ticket["version"].(float64); v != 2 {
+		t.Errorf("version after edit = %v, want 2", v)
+	}
+}

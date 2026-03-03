@@ -34,6 +34,7 @@ type ticketJSON struct {
 	ExternalRef string   `json:"external-ref,omitempty"`
 	Parent      string   `json:"parent,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+	Version     int      `json:"version"`
 	Title       string   `json:"title"`
 }
 
@@ -58,6 +59,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			ExternalRef: t.ExternalRef,
 			Parent:      t.Parent,
 			Tags:        t.Tags,
+			Version:     t.Version,
 			Title:       t.Title,
 		}
 		data, err := json.Marshal(j)

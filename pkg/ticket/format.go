@@ -93,6 +93,9 @@ func Serialize(t *Ticket) ([]byte, error) {
 	if len(t.Conversations) > 0 {
 		writeFlowArray(&buf, "conversations", t.Conversations)
 	}
+	if t.Version > 0 {
+		writeField(&buf, "version", fmt.Sprintf("%d", t.Version))
+	}
 	buf.WriteString("---\n")
 
 	buf.WriteString("# " + t.Title + "\n")
