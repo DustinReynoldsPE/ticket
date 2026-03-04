@@ -80,7 +80,7 @@ func MoveTicket(src, dst *FileStore, id string, recursive bool) ([]MoveResult, e
 		// Build the new ticket as a copy.
 		newTicket := &Ticket{
 			ID:          newID,
-			Status:      t.Status,
+			Stage:       t.Stage,
 			Type:        t.Type,
 			Priority:    t.Priority,
 			Assignee:    t.Assignee,
@@ -147,7 +147,7 @@ func MoveTicket(src, dst *FileStore, id string, recursive bool) ([]MoveResult, e
 			Timestamp: now,
 			Text:      closeNote,
 		})
-		t.Status = StatusClosed
+		t.Stage = StageDone
 		if err := src.Update(t); err != nil {
 			return nil, fmt.Errorf("closing %s in source: %w", t.ID, err)
 		}

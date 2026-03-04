@@ -34,7 +34,6 @@ func NewServer(ticketsDir string) *mcp.Server {
 	registerAdvance(server, store)
 	registerReview(server, store)
 	registerSkip(server, store)
-	registerMigrate(server, store)
 	registerInbox(server, store)
 	registerClaim(server, store)
 	registerLinkSession(server, store)
@@ -46,8 +45,7 @@ func NewServer(ticketsDir string) *mcp.Server {
 type ticketSummaryJSON struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
-	Status   string `json:"status,omitempty"`
-	Stage    string `json:"stage,omitempty"`
+	Stage    string `json:"stage"`
 	Priority int    `json:"priority"`
 	Type     string `json:"type"`
 	Assignee string `json:"assignee,omitempty"`
@@ -58,7 +56,6 @@ func toSummaryJSON(t *ticket.Ticket) ticketSummaryJSON {
 	return ticketSummaryJSON{
 		ID:       t.ID,
 		Title:    t.Title,
-		Status:   string(t.Status),
 		Stage:    string(t.Stage),
 		Priority: t.Priority,
 		Type:     string(t.Type),
@@ -70,8 +67,7 @@ func toSummaryJSON(t *ticket.Ticket) ticketSummaryJSON {
 // Full JSON representation of a ticket — used only by ticket_show.
 type ticketJSON struct {
 	ID            string       `json:"id"`
-	Status        string       `json:"status,omitempty"`
-	Stage         string       `json:"stage,omitempty"`
+	Stage         string       `json:"stage"`
 	Review        string       `json:"review,omitempty"`
 	Risk          string       `json:"risk,omitempty"`
 	Deps          []string     `json:"deps"`
@@ -111,7 +107,6 @@ type noteJSON struct {
 func toJSON(t *ticket.Ticket) ticketJSON {
 	j := ticketJSON{
 		ID:            t.ID,
-		Status:        string(t.Status),
 		Stage:         string(t.Stage),
 		Review:        string(t.Review),
 		Risk:          string(t.Risk),
@@ -232,7 +227,7 @@ func errResult(format string, a ...any) (*mcp.CallToolResult, error) {
 // --- Tool registrations ---
 
 type listArgs struct {
-	Status   string `json:"status,omitempty" jsonschema:"filter by status: open, in_progress, needs_testing, closed"`
+	Stage    string `json:"stage,omitempty" jsonschema:"filter by stage: triage, spec, design, implement, test, verify, done"`
 	Type     string `json:"type,omitempty" jsonschema:"filter by type: bug, feature, task, epic, chore"`
 	Priority *int   `json:"priority,omitempty" jsonschema:"filter by priority (0-4)"`
 	Assignee string `json:"assignee,omitempty" jsonschema:"filter by assignee name"`
@@ -253,12 +248,12 @@ func registerList(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		opts := ticket.DefaultListOptions()
-		if args.Status != "" {
-			opts.Status = ticket.Status(args.Status)
+		if args.Stage != "" {
+			opts.Stage = ticket.Stage(args.Stage)
 		} else {
 			var filtered []*ticket.Ticket
 			for _, t := range tickets {
-				if t.Status != ticket.StatusClosed {
+				if t.Stage != ticket.StageDone {
 					filtered = append(filtered, t)
 				}
 			}
@@ -281,7 +276,7 @@ func registerList(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		tickets = ticket.Filter(tickets, opts)
-		ticket.SortByStatusPriorityID(tickets)
+		ticket.SortByStagePriorityID(tickets)
 
 		limit := args.Limit
 		if limit <= 0 {
@@ -348,7 +343,6 @@ func registerCreate(server *mcp.Server, store *ticket.FileStore) {
 		t := &ticket.Ticket{
 			ID:       ticket.GenerateID(args.Title),
 			Title:    args.Title,
-			Status:   ticket.StatusOpen,
 			Stage:    ticket.StageTriage,
 			Priority: 2,
 			Created:  time.Now().UTC(),
@@ -404,7 +398,7 @@ func registerCreate(server *mcp.Server, store *ticket.FileStore) {
 type editArgs struct {
 	ID          string `json:"id" jsonschema:"ticket ID"`
 	Title       string `json:"title,omitempty" jsonschema:"new title"`
-	Status      string `json:"status,omitempty" jsonschema:"new status: open, in_progress, needs_testing, closed"`
+	Stage       string `json:"stage,omitempty" jsonschema:"new stage: triage, spec, design, implement, test, verify, done"`
 	Type        string `json:"type,omitempty" jsonschema:"new type"`
 	Priority    *int   `json:"priority,omitempty" jsonschema:"new priority (0-4)"`
 	Assignee    string `json:"assignee,omitempty" jsonschema:"new assignee"`
@@ -431,8 +425,8 @@ func registerEdit(server *mcp.Server, store *ticket.FileStore) {
 		if args.Title != "" {
 			t.Title = args.Title
 		}
-		if args.Status != "" {
-			t.Status = ticket.Status(args.Status)
+		if args.Stage != "" {
+			t.Stage = ticket.Stage(args.Stage)
 		}
 		if args.Type != "" {
 			t.Type = ticket.TicketType(args.Type)
@@ -474,12 +468,6 @@ func registerEdit(server *mcp.Server, store *ticket.FileStore) {
 			return r, nil, nil
 		}
 
-		// Propagate status changes.
-		if args.Status != "" {
-			ticket.PropagateStatus(store, t.ID)
-		}
-
-		// Re-read to get propagated state.
 		t, _ = store.Get(t.ID)
 		r, err := jsonResult(toSummaryJSON(t))
 		return r, nil, err
@@ -808,22 +796,6 @@ func registerSkip(server *mcp.Server, store *ticket.FileStore) {
 		t, _ := store.Get(args.ID)
 		r, jsonErr := jsonResult(toSummaryJSON(t))
 		return r, nil, jsonErr
-	})
-}
-
-func registerMigrate(server *mcp.Server, store *ticket.FileStore) {
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "ticket_migrate",
-		Description: "Migrate all status-based tickets to stage pipeline. Idempotent.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args emptyArgs) (*mcp.CallToolResult, any, error) {
-		count, err := ticket.MigrateAll(store)
-		if err != nil {
-			r, _ := errResult("migration failed: %v", err)
-			return r, nil, nil
-		}
-
-		r, err := textResult(fmt.Sprintf("Migrated %d ticket(s)", count))
-		return r, nil, err
 	})
 }
 

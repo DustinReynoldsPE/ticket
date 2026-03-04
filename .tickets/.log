@@ -25,3 +25,14 @@
 2026-03-04T05:02:45Z cli-update-show-98ca created
 2026-03-04T05:02:54Z tests-update-tests-b353 created
 2026-03-04T05:03:03Z docs-update-readme-7296 created
+2026-03-04T05:38:28Z core-remove-status-17f0 stage triage→done
+2026-03-04T05:38:46Z remove-status-stage-7439 stage triage→spec
+2026-03-04T05:38:46Z remove-status-stage-7439 stage spec→design
+2026-03-04T05:38:46Z remove-status-stage-7439 stage design→done
+2026-03-04T05:38:53Z remove-status-stage-7439 stage done→design
+2026-03-04T05:39:07Z core-replace-status-83c2 stage triage→done
+2026-03-04T05:39:07Z core-remove-status-3402 stage triage→done
+2026-03-04T05:45:17Z cli-remove-status-cc0e stage triage→done
+2026-03-04T05:45:17Z mcp-replace-status-5712 stage triage→done
+2026-03-04T05:45:17Z tui-remove-status-9771 stage triage→done
+2026-03-04T05:45:17Z cli-update-show-98ca stage triage→done

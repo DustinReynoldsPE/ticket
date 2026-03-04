@@ -91,7 +91,7 @@ func loadTickets(store *ticket.FileStore) tea.Cmd {
 		if err != nil {
 			return errMsg(err)
 		}
-		ticket.SortByStatusPriorityID(tickets)
+		ticket.SortByStagePriorityID(tickets)
 		return ticketsLoadedMsg(tickets)
 	}
 }
@@ -491,7 +491,6 @@ func (a *App) handleCreateTicket(msg formSubmitMsg) tea.Cmd {
 		Type:     msg.ticketType,
 		Priority: msg.priority,
 		Assignee: msg.assignee,
-		Status:   ticket.StatusOpen,
 		Stage:    ticket.StageTriage,
 		Created:  time.Now().UTC(),
 	}

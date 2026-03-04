@@ -161,15 +161,8 @@ func Projects(store *FileStore) ([]ProjectSummary, error) {
 
 		doneCount := 0
 		for _, kid := range kids {
-			stage := kid.Stage
-			if stage == "" {
-				// Legacy ticket — map status.
-				if s, ok := StatusToStage[kid.Status]; ok {
-					stage = s
-				}
-			}
-			summary.StageBreakdown[stage]++
-			if stage == StageDone {
+			summary.StageBreakdown[kid.Stage]++
+			if kid.Stage == StageDone {
 				doneCount++
 			}
 

@@ -1,6 +1,6 @@
 ---
 id: mcp-replace-status-5712
-stage: triage
+stage: done
 status: open
 deps: [core-remove-status-17f0]
 links: []
@@ -8,7 +8,7 @@ created: 2026-03-04T05:02:31Z
 type: task
 priority: 2
 parent: remove-status-stage-7439
-version: 2
+version: 3
 ---
 # MCP: Replace status with stage in tool parameters
 
