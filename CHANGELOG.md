@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.5.0] - 2026-03-03
 
 ### Added
 - MCP response optimization: compact JSON, summary projections for list/ready/blocked/inbox, slim mutation responses (~60-80% context token savings)
