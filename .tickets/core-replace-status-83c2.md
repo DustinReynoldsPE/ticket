@@ -1,6 +1,6 @@
 ---
 id: core-replace-status-83c2
-stage: triage
+stage: done
 status: open
 deps: [core-remove-status-17f0]
 links: []
@@ -8,7 +8,7 @@ created: 2026-03-04T05:02:07Z
 type: task
 priority: 2
 parent: remove-status-stage-7439
-version: 2
+version: 3
 ---
 # Core: Replace status-based filtering with stage
 

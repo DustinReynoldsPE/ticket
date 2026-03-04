@@ -1,16 +1,15 @@
 ---
 id: remove-status-stage-7439
-stage: triage
+stage: design
 status: open
 deps: []
 links: []
 created: 2026-03-04T05:01:51Z
 type: epic
 priority: 2
-version: 1
+version: 5
 ---
 # Remove Status, Stage-only state model
-
 
 Remove the Status field entirely from tk. Stage becomes the sole state model. Breaking change for v3.0.0.
 

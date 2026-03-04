@@ -29,7 +29,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 	now := time.Now()
 
 	// Counters.
-	statuses := map[ticket.Status]int{}
+	stages := map[ticket.Stage]int{}
 	types := map[ticket.TicketType]int{}
 	priorities := map[int]int{}
 
@@ -40,11 +40,11 @@ func runStats(cmd *cobra.Command, args []string) error {
 	var oldestID string
 
 	for _, t := range tickets {
-		statuses[t.Status]++
+		stages[t.Stage]++
 		types[t.Type]++
 		priorities[t.Priority]++
 
-		if t.Status != ticket.StatusClosed {
+		if t.Stage != ticket.StageDone {
 			openCount++
 			if !t.Created.IsZero() {
 				days := int(math.Floor(now.Sub(t.Created).Hours() / 24))
@@ -64,17 +64,20 @@ func runStats(cmd *cobra.Command, args []string) error {
 	// Header.
 	fmt.Printf("\n  PROJECT HEALTH\n\n")
 
-	// Status breakdown.
-	fmt.Printf("  Status:\n")
-	statusOrder := []ticket.Status{
-		ticket.StatusOpen,
-		ticket.StatusInProgress,
-		ticket.StatusNeedsTesting,
-		ticket.StatusClosed,
+	// Stage breakdown.
+	fmt.Printf("  Stage:\n")
+	stageOrder := []ticket.Stage{
+		ticket.StageTriage,
+		ticket.StageSpec,
+		ticket.StageDesign,
+		ticket.StageImplement,
+		ticket.StageTest,
+		ticket.StageVerify,
+		ticket.StageDone,
 	}
-	for _, s := range statusOrder {
-		if statuses[s] > 0 {
-			fmt.Printf("    %-15s %d\n", s, statuses[s])
+	for _, s := range stageOrder {
+		if stages[s] > 0 {
+			fmt.Printf("    %-15s %d\n", s, stages[s])
 		}
 	}
 	fmt.Printf("    %-15s %d\n", "TOTAL", len(tickets))

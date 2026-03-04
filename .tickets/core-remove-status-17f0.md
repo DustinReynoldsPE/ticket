@@ -1,6 +1,6 @@
 ---
 id: core-remove-status-17f0
-stage: triage
+stage: done
 status: open
 deps: []
 links: []
@@ -8,10 +8,9 @@ created: 2026-03-04T05:02:01Z
 type: task
 priority: 2
 parent: remove-status-stage-7439
-version: 1
+version: 2
 ---
 # Core: Remove Status type, add auto-migrate on read
-
 
 Remove Status type and add legacy auto-migration in the parser. This is the foundation all other tasks depend on.
 
