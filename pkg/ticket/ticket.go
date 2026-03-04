@@ -6,31 +6,6 @@ import (
 	"time"
 )
 
-// Status represents the lifecycle state of a ticket.
-type Status string
-
-const (
-	StatusOpen         Status = "open"
-	StatusInProgress   Status = "in_progress"
-	StatusNeedsTesting Status = "needs_testing"
-	StatusClosed       Status = "closed"
-)
-
-var validStatuses = map[Status]bool{
-	StatusOpen:         true,
-	StatusInProgress:   true,
-	StatusNeedsTesting: true,
-	StatusClosed:       true,
-}
-
-// ValidateStatus returns an error if s is not a recognized status.
-func ValidateStatus(s Status) error {
-	if validStatuses[s] {
-		return nil
-	}
-	return fmt.Errorf("invalid status %q: must be one of open, in_progress, needs_testing, closed", s)
-}
-
 // Stage represents a position in a type-dependent pipeline.
 type Stage string
 
@@ -173,7 +148,6 @@ type Note struct {
 // content are parsed from the markdown outside the frontmatter.
 type Ticket struct {
 	ID          string     `yaml:"id"`
-	Status      Status     `yaml:"status,omitempty"`
 	Stage       Stage      `yaml:"stage,omitempty"`
 	Review      ReviewState `yaml:"review,omitempty"`
 	Risk        RiskLevel  `yaml:"risk,omitempty"`
@@ -203,21 +177,11 @@ func (t *Ticket) Validate() error {
 		return fmt.Errorf("ticket ID is required")
 	}
 
-	// Dual mode: tickets must have either status (legacy) or stage (pipeline).
-	hasStatus := t.Status != ""
-	hasStage := t.Stage != ""
-	if !hasStatus && !hasStage {
-		return fmt.Errorf("ticket must have either status or stage")
+	if t.Stage == "" {
+		return fmt.Errorf("ticket stage is required")
 	}
-	if hasStatus {
-		if err := ValidateStatus(t.Status); err != nil {
-			return err
-		}
-	}
-	if hasStage {
-		if err := ValidateStage(t.Stage); err != nil {
-			return err
-		}
+	if err := ValidateStage(t.Stage); err != nil {
+		return err
 	}
 
 	if t.Review != ReviewNone {
@@ -248,7 +212,7 @@ func (t *Ticket) Validate() error {
 // ValidateStageForType checks that the ticket's stage is valid for its type's pipeline.
 func ValidateStageForType(t *Ticket) error {
 	if t.Stage == "" {
-		return nil // Legacy ticket without stage — nothing to validate.
+		return nil
 	}
 	if !HasStage(t.Type, t.Stage) {
 		return fmt.Errorf("stage %q is not part of the %s pipeline", t.Stage, t.Type)

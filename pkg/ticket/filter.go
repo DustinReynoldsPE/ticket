@@ -7,7 +7,7 @@ import (
 
 // ListOptions carries filter parameters for listing tickets.
 type ListOptions struct {
-	Status   Status
+	Stage    Stage
 	Type     TicketType
 	Priority int // -1 means no filter
 	Assignee string
@@ -24,7 +24,7 @@ func DefaultListOptions() ListOptions {
 func Filter(tickets []*Ticket, opts ListOptions) []*Ticket {
 	var result []*Ticket
 	for _, t := range tickets {
-		if opts.Status != "" && t.Status != opts.Status {
+		if opts.Stage != "" && t.Stage != opts.Stage {
 			continue
 		}
 		if opts.Type != "" && t.Type != opts.Type {
@@ -47,11 +47,11 @@ func Filter(tickets []*Ticket, opts ListOptions) []*Ticket {
 	return result
 }
 
-// SortByStatusPriorityID sorts tickets by status order, then priority (asc),
-// then ID. This is the default sort for ls/ready/blocked.
-func SortByStatusPriorityID(tickets []*Ticket) {
+// SortByStagePriorityID sorts tickets by pipeline stage order, then priority
+// (asc), then ID. This is the default sort for ls/ready/blocked.
+func SortByStagePriorityID(tickets []*Ticket) {
 	sort.SliceStable(tickets, func(i, j int) bool {
-		si, sj := statusOrder(tickets[i].Status), statusOrder(tickets[j].Status)
+		si, sj := stageOrder(tickets[i].Stage), stageOrder(tickets[j].Stage)
 		if si != sj {
 			return si < sj
 		}
@@ -62,7 +62,7 @@ func SortByStatusPriorityID(tickets []*Ticket) {
 	})
 }
 
-// SortByPriorityID sorts by priority then ID. Used when grouping by status.
+// SortByPriorityID sorts by priority then ID. Used when grouping by stage.
 func SortByPriorityID(tickets []*Ticket) {
 	sort.SliceStable(tickets, func(i, j int) bool {
 		if tickets[i].Priority != tickets[j].Priority {
@@ -72,23 +72,29 @@ func SortByPriorityID(tickets []*Ticket) {
 	})
 }
 
-// statusOrder returns the sort rank for a status, matching the bash impl.
-func statusOrder(s Status) int {
+// stageOrder returns the sort rank for a stage based on pipeline position.
+func stageOrder(s Stage) int {
 	switch s {
-	case StatusInProgress:
+	case StageTriage:
 		return 1
-	case StatusOpen:
+	case StageSpec:
 		return 2
-	case StatusNeedsTesting:
+	case StageDesign:
 		return 3
-	case StatusClosed:
+	case StageImplement:
 		return 4
-	default:
+	case StageTest:
 		return 5
+	case StageVerify:
+		return 6
+	case StageDone:
+		return 7
+	default:
+		return 8
 	}
 }
 
-// TypeOrder returns the sort rank for a ticket type, matching the bash impl.
+// TypeOrder returns the sort rank for a ticket type.
 func TypeOrder(t TicketType) int {
 	switch t {
 	case TypeEpic:

@@ -98,11 +98,8 @@ func (s *FileStore) Update(t *Ticket) error {
 		return err
 	}
 
-	if disk.Stage != t.Stage && t.Stage != "" {
+	if disk.Stage != t.Stage {
 		s.appendLog(t.ID, fmt.Sprintf("stage %s→%s", disk.Stage, t.Stage))
-	}
-	if disk.Status != t.Status && t.Status != "" {
-		s.appendLog(t.ID, fmt.Sprintf("status %s→%s", disk.Status, t.Status))
 	}
 	if disk.Assignee != t.Assignee {
 		if t.Assignee != "" {

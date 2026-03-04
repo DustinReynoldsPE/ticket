@@ -4,10 +4,10 @@ import "fmt"
 
 // DepNode represents one entry in a dependency tree.
 type DepNode struct {
-	ID     string
-	Title  string
-	Status Status
-	Depth  int
+	ID    string
+	Title string
+	Stage Stage
+	Depth int
 }
 
 // DepTree walks the dependency graph for the given ticket ID.
@@ -24,10 +24,10 @@ func DepTree(store *FileStore, id string, full bool) ([]DepNode, error) {
 	var walk func(t *Ticket, depth int)
 	walk = func(t *Ticket, depth int) {
 		nodes = append(nodes, DepNode{
-			ID:     t.ID,
-			Title:  t.Title,
-			Status: t.Status,
-			Depth:  depth,
+			ID:    t.ID,
+			Title: t.Title,
+			Stage: t.Stage,
+			Depth: depth,
 		})
 		for _, depID := range t.Deps {
 			if !full && seen[depID] {
@@ -75,10 +75,10 @@ func FindCycles(store *FileStore) ([]Cycle, error) {
 		return nil, err
 	}
 
-	// Index only non-closed tickets.
+	// Index only non-done tickets.
 	byID := map[string]*Ticket{}
 	for _, t := range tickets {
-		if t.Status != StatusClosed {
+		if t.Stage != StageDone {
 			byID[t.ID] = t
 		}
 	}
@@ -154,8 +154,7 @@ func normalizeCycle(ids []string) string {
 	return key
 }
 
-// IsBlocked returns true if any of the ticket's dependencies are not closed.
-// Only meaningful for open/in_progress tickets.
+// IsBlocked returns true if any of the ticket's dependencies are not done.
 func IsBlocked(store *FileStore, t *Ticket) bool {
 	if len(t.Deps) == 0 {
 		return false
@@ -163,17 +162,16 @@ func IsBlocked(store *FileStore, t *Ticket) bool {
 	for _, depID := range t.Deps {
 		dep, err := store.Get(depID)
 		if err != nil {
-			// Missing dep is treated as blocking.
 			return true
 		}
-		if dep.Status != StatusClosed {
+		if dep.Stage != StageDone {
 			return true
 		}
 	}
 	return false
 }
 
-// BlockingDeps returns the IDs of dependencies that are not closed.
+// BlockingDeps returns the IDs of dependencies that are not done.
 func BlockingDeps(store *FileStore, t *Ticket) []string {
 	var blocking []string
 	for _, depID := range t.Deps {
@@ -182,17 +180,17 @@ func BlockingDeps(store *FileStore, t *Ticket) []string {
 			blocking = append(blocking, depID)
 			continue
 		}
-		if dep.Status != StatusClosed {
+		if dep.Stage != StageDone {
 			blocking = append(blocking, depID)
 		}
 	}
 	return blocking
 }
 
-// IsReady returns true if the ticket is actionable: open or in_progress,
-// all deps closed, and parent chain is active (all ancestors in_progress).
+// IsReady returns true if the ticket is actionable: not done,
+// all deps done, and parent chain is active (all ancestors past triage).
 func IsReady(store *FileStore, t *Ticket) bool {
-	if t.Status != StatusOpen && t.Status != StatusInProgress {
+	if t.Stage == StageDone {
 		return false
 	}
 	if IsBlocked(store, t) {
@@ -202,19 +200,19 @@ func IsReady(store *FileStore, t *Ticket) bool {
 }
 
 // IsReadyOpen is like IsReady but bypasses parent gating.
-// Shows all unblocked open/in_progress tickets regardless of epic status.
 func IsReadyOpen(store *FileStore, t *Ticket) bool {
-	if t.Status != StatusOpen && t.Status != StatusInProgress {
+	if t.Stage == StageDone {
 		return false
 	}
 	return !IsBlocked(store, t)
 }
 
 // parentChainActive checks that every ancestor (via parent field) is
-// in_progress. If a parent is not found in the store, it's treated as active.
+// past triage (i.e. has been started). If a parent is not found, it's
+// treated as active.
 func parentChainActive(store *FileStore, id string, visited map[string]bool) bool {
 	if visited[id] {
-		return true // avoid infinite loops
+		return true
 	}
 	visited[id] = true
 
@@ -227,9 +225,9 @@ func parentChainActive(store *FileStore, id string, visited map[string]bool) boo
 	}
 	parent, err := store.Get(t.Parent)
 	if err != nil {
-		return true // parent not in store — treat as active
+		return true
 	}
-	if parent.Status != StatusInProgress {
+	if parent.Stage == StageDone || parent.Stage == StageTriage {
 		return false
 	}
 	return parentChainActive(store, parent.ID, visited)
@@ -266,7 +264,7 @@ func readyTicketsImpl(store *FileStore, openMode bool) ([]*Ticket, error) {
 	return ready, nil
 }
 
-// BlockedTickets returns all open/in_progress tickets with unresolved deps.
+// BlockedTickets returns all non-done tickets with unresolved deps.
 func BlockedTickets(store *FileStore) ([]*Ticket, error) {
 	tickets, err := store.List()
 	if err != nil {
@@ -275,7 +273,7 @@ func BlockedTickets(store *FileStore) ([]*Ticket, error) {
 
 	var blocked []*Ticket
 	for _, t := range tickets {
-		if t.Status != StatusOpen && t.Status != StatusInProgress {
+		if t.Stage == StageDone {
 			continue
 		}
 		if IsBlocked(store, t) {

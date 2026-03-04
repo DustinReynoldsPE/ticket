@@ -11,6 +11,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// legacyStatusToStage maps old status values to pipeline stages.
+// Used only during parse to auto-migrate legacy ticket files.
+var legacyStatusToStage = map[string]Stage{
+	"open":          StageTriage,
+	"in_progress":   StageImplement,
+	"needs_testing": StageTest,
+	"closed":        StageDone,
+}
+
 // Parse reads a ticket from markdown with YAML frontmatter.
 func Parse(r io.Reader) (*Ticket, error) {
 	front, body, err := splitFrontmatter(r)
@@ -21,6 +30,19 @@ func Parse(r io.Reader) (*Ticket, error) {
 	var t Ticket
 	if err := yaml.Unmarshal(front, &t); err != nil {
 		return nil, fmt.Errorf("parsing frontmatter: %w", err)
+	}
+
+	// Auto-migrate legacy status → stage.
+	if t.Stage == "" {
+		var raw map[string]interface{}
+		_ = yaml.Unmarshal(front, &raw)
+		if s, ok := raw["status"].(string); ok {
+			if stage, found := legacyStatusToStage[s]; found {
+				t.Stage = stage
+			} else {
+				t.Stage = StageTriage
+			}
+		}
 	}
 
 	// Ensure nil slices become empty slices for consistent handling.
@@ -52,13 +74,7 @@ func Serialize(t *Ticket) ([]byte, error) {
 	buf.WriteString("---\n")
 	writeField(&buf, "id", t.ID)
 
-	// Write stage if present, fall back to status for legacy tickets.
-	if t.Stage != "" {
-		writeField(&buf, "stage", string(t.Stage))
-	}
-	if t.Status != "" {
-		writeField(&buf, "status", string(t.Status))
-	}
+	writeField(&buf, "stage", string(t.Stage))
 	if t.Review != ReviewNone {
 		writeField(&buf, "review", string(t.Review))
 	}
