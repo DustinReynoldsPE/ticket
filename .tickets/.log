@@ -15,3 +15,13 @@
 2026-03-04T03:26:54Z optimize-mcp-response-6456 status open→in_progress
 2026-03-04T03:46:10Z optimize-mcp-response-6456 stage implement→done
 2026-03-04T04:14:50Z optimize-mcp-response-6456 status in_progress→closed
+2026-03-04T05:01:51Z remove-status-stage-7439 created
+2026-03-04T05:02:01Z core-remove-status-17f0 created
+2026-03-04T05:02:07Z core-replace-status-83c2 created
+2026-03-04T05:02:15Z core-remove-status-3402 created
+2026-03-04T05:02:23Z cli-remove-status-cc0e created
+2026-03-04T05:02:31Z mcp-replace-status-5712 created
+2026-03-04T05:02:38Z tui-remove-status-9771 created
+2026-03-04T05:02:45Z cli-update-show-98ca created
+2026-03-04T05:02:54Z tests-update-tests-b353 created
+2026-03-04T05:03:03Z docs-update-readme-7296 created
