@@ -1,19 +1,16 @@
 ---
 id: tk-ui-leverage-14ce
 stage: done
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-02-28T20:20:53Z
 type: feature
 priority: 2
 skipped: [spec, design, implement, test]
+version: 1
 ---
 # 'tk ui' leverage file watch to update in real-time?
-
-
-
-
 
 TUI doesn't reflect changes made by other processes (MCP agents, CLI in another terminal). Add filesystem watching to auto-reload tickets when .tickets/ directory changes.
 

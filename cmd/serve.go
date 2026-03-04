@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/EnderRealm/ticket/internal/mcp"
+	"github.com/DustinReynoldsPE/ticket/internal/mcp"
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )

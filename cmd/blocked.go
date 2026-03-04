@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/EnderRealm/ticket/pkg/ticket"
+	"github.com/DustinReynoldsPE/ticket/pkg/ticket"
 	"github.com/spf13/cobra"
 )
 

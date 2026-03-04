@@ -1,6 +1,6 @@
 package main
 
-import "github.com/EnderRealm/ticket/cmd"
+import "github.com/DustinReynoldsPE/ticket/cmd"
 
 func main() {
 	cmd.Execute()

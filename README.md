@@ -9,7 +9,7 @@ Tickets are markdown files with YAML frontmatter in `.tickets/`. This allows AI 
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew install EnderRealm/tools/ticket
+brew install DustinReynoldsPE/tools/ticket
 ```
 
 To upgrade after a new release:
@@ -40,7 +40,7 @@ go build -o tk .
 Release builds inject the version via ldflags:
 
 ```bash
-go build -ldflags "-X github.com/EnderRealm/ticket/cmd.Version=2.1.0" -o tk .
+go build -ldflags "-X github.com/DustinReynoldsPE/ticket/cmd.Version=2.1.0" -o tk .
 ```
 
 Dev builds (`go build` with no ldflags) automatically show the git commit and dirty state via `runtime/debug.ReadBuildInfo`:
@@ -176,7 +176,7 @@ Partial ID matching: `tk show 5c4` matches `nw-5c46`.
 
 3. GitHub Actions handles the rest:
    - **GoReleaser** builds darwin/linux binaries (amd64 + arm64)
-   - **Homebrew** tap updated in `EnderRealm/homebrew-tools`
+   - **Homebrew** tap updated in `DustinReynoldsPE/homebrew-tools`
 
 Required repository secrets: `GITHUB_TOKEN`, `TAP_GITHUB_TOKEN`.
 
@@ -196,7 +196,7 @@ gh release delete v2.1.0 --yes
 gh run rerun --failed
 ```
 
-`TAP_GITHUB_TOKEN` is a fine-grained PAT with Contents (read & write) permission on `EnderRealm/homebrew-tools`. If it expires, the Homebrew step will fail with a 401. Regenerate and update:
+`TAP_GITHUB_TOKEN` is a fine-grained PAT with Contents (read & write) permission on `DustinReynoldsPE/homebrew-tools`. If it expires, the Homebrew step will fail with a 401. Regenerate and update:
 
 ```bash
 gh secret set TAP_GITHUB_TOKEN
@@ -208,4 +208,4 @@ MIT
 
 ## Credits
 
-GitHub user https://github.com/smacbeth has graciously improved the original [wedow/ticket](https://github.com/wedow/ticket) by creating a full pipeline system based off of it.  See https://github.com/EnderRealm/ticket for details!
+GitHub user https://github.com/smacbeth has graciously improved the original [wedow/ticket](https://github.com/wedow/ticket) by creating a full pipeline system based off of it.  See https://github.com/DustinReynoldsPE/ticket for details!

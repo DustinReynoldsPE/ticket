@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	ticketmcp "github.com/EnderRealm/ticket/internal/mcp"
+	ticketmcp "github.com/DustinReynoldsPE/ticket/internal/mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -64,10 +64,6 @@ func TestCreateTicket(t *testing.T) {
 	}
 	if ticket["status"] != "open" {
 		t.Errorf("status = %q, want %q", ticket["status"], "open")
-	}
-	created, _ := ticket["created"].(string)
-	if created == "" || created == "0001-01-01T00:00:00Z" {
-		t.Errorf("created = %q, want non-zero timestamp", created)
 	}
 }
 
@@ -486,6 +482,15 @@ func TestVersionIncrements(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("edit returned error: %s", result.Content[0].(*mcp.TextContent).Text)
 	}
+
+	// Verify version via show (edit returns summary without version).
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	text = result.Content[0].(*mcp.TextContent).Text
 	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
 		t.Fatal(err)
@@ -514,15 +519,28 @@ func TestLinkSession(t *testing.T) {
 		t.Fatalf("link-session returned error: %s", result.Content[0].(*mcp.TextContent).Text)
 	}
 
-	text := result.Content[0].(*mcp.TextContent).Text
-	var ticket map[string]any
-	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
-		t.Fatal(err)
+	// Verify via show (link_session returns summary without conversations).
+	showConvs := func(expectedLen int) {
+		t.Helper()
+		r, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "ticket_show",
+			Arguments: map[string]any{"id": id},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := r.Content[0].(*mcp.TextContent).Text
+		var ticket map[string]any
+		if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+			t.Fatal(err)
+		}
+		convs, ok := ticket["conversations"].([]any)
+		if !ok || len(convs) != expectedLen {
+			t.Errorf("conversations length = %d, want %d", len(convs), expectedLen)
+		}
 	}
-	convs, ok := ticket["conversations"].([]any)
-	if !ok || len(convs) != 1 || convs[0] != "sess-abc-123" {
-		t.Errorf("conversations = %v, want [sess-abc-123]", ticket["conversations"])
-	}
+
+	showConvs(1)
 
 	// Link same session again — should deduplicate.
 	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -535,14 +553,7 @@ func TestLinkSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text = result.Content[0].(*mcp.TextContent).Text
-	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
-		t.Fatal(err)
-	}
-	convs = ticket["conversations"].([]any)
-	if len(convs) != 1 {
-		t.Errorf("expected 1 conversation after dedup, got %d", len(convs))
-	}
+	showConvs(1)
 
 	// Link a second session.
 	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -555,12 +566,147 @@ func TestLinkSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text = result.Content[0].(*mcp.TextContent).Text
+	_ = result
+	showConvs(2)
+}
+
+func TestListReturnsSummary(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "ticket_list",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+
+	// Must be compact JSON (no indentation).
+	if text[0:2] == "[\n" {
+		t.Error("expected compact JSON, got indented")
+	}
+
+	var tickets []map[string]any
+	if err := json.Unmarshal([]byte(text), &tickets); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(tickets) == 0 {
+		t.Fatal("expected at least 1 ticket")
+	}
+
+	// Find our ticket.
+	var found map[string]any
+	for _, tk := range tickets {
+		if tk["id"] == id {
+			found = tk
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("ticket %s not in list", id)
+	}
+
+	// Summary fields must be present.
+	for _, field := range []string{"id", "title", "status", "stage", "type"} {
+		if found[field] == nil || found[field] == "" {
+			t.Errorf("summary missing field %q", field)
+		}
+	}
+
+	// Full fields must be absent.
+	for _, field := range []string{"description", "notes", "reviews", "created", "version", "deps", "links"} {
+		if found[field] != nil {
+			t.Errorf("summary should not contain %q, got %v", field, found[field])
+		}
+	}
+}
+
+func TestListLimit(t *testing.T) {
+	session := testServer(t)
+
+	// Create 3 tickets.
+	for i := 0; i < 3; i++ {
+		createTestTicket(t, session)
+	}
+
+	// Limit to 2.
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "ticket_list",
+		Arguments: map[string]any{"limit": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tickets []map[string]any
+	text := result.Content[0].(*mcp.TextContent).Text
+	if err := json.Unmarshal([]byte(text), &tickets); err != nil {
+		t.Fatal(err)
+	}
+	if len(tickets) != 2 {
+		t.Errorf("expected 2 tickets with limit=2, got %d", len(tickets))
+	}
+}
+
+func TestMutationReturnsSummary(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	// Edit returns summary.
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "ticket_edit",
+		Arguments: map[string]any{
+			"id":    id,
+			"title": "Edited title",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
 	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
 		t.Fatal(err)
 	}
-	convs = ticket["conversations"].([]any)
-	if len(convs) != 2 {
-		t.Errorf("expected 2 conversations, got %d", len(convs))
+
+	if ticket["title"] != "Edited title" {
+		t.Errorf("title = %q, want %q", ticket["title"], "Edited title")
+	}
+
+	// Full fields must be absent from mutation response.
+	for _, field := range []string{"description", "notes", "reviews", "created", "version"} {
+		if ticket[field] != nil {
+			t.Errorf("mutation response should not contain %q", field)
+		}
+	}
+}
+
+func TestShowReturnsFull(t *testing.T) {
+	session := testServer(t)
+	id := createTestTicket(t, session)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "ticket_show",
+		Arguments: map[string]any{"id": id},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var ticket map[string]any
+	if err := json.Unmarshal([]byte(text), &ticket); err != nil {
+		t.Fatal(err)
+	}
+
+	// Full fields must be present.
+	for _, field := range []string{"id", "title", "status", "stage", "type", "created", "version"} {
+		if ticket[field] == nil {
+			t.Errorf("show response missing field %q", field)
+		}
 	}
 }

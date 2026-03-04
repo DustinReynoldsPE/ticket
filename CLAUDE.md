@@ -63,4 +63,4 @@ git tag v2.2.0
 git push && git push origin v2.2.0
 ```
 
-GitHub Actions automatically builds binaries via GoReleaser and updates the Homebrew formula in `EnderRealm/homebrew-tools`.
+GitHub Actions automatically builds binaries via GoReleaser and updates the Homebrew formula in `DustinReynoldsPE/homebrew-tools`.

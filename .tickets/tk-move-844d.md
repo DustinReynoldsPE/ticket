@@ -1,15 +1,15 @@
 ---
 id: tk-move-844d
 stage: done
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-28T19:53:03Z
 type: task
 priority: 2
+version: 1
 ---
 # 'tk move
-
 
 
 

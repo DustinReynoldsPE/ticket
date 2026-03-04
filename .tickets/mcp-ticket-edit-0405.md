@@ -1,7 +1,7 @@
 ---
 id: mcp-ticket-edit-0405
 stage: done
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-27T08:00:51Z
@@ -9,6 +9,7 @@ type: bug
 priority: 1
 assignee: Steve Macbeth
 tags: [mcp]
+version: 1
 ---
 # MCP ticket_edit silently drops body fields (acceptance, design, description)
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/EnderRealm/ticket/pkg/ticket"
+	"github.com/DustinReynoldsPE/ticket/pkg/ticket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -42,7 +42,32 @@ func NewServer(ticketsDir string) *mcp.Server {
 	return server
 }
 
-// JSON representation of a ticket for MCP responses.
+// Summary projection for list/mutation responses — minimal fields to save context tokens.
+type ticketSummaryJSON struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Status   string `json:"status,omitempty"`
+	Stage    string `json:"stage,omitempty"`
+	Priority int    `json:"priority"`
+	Type     string `json:"type"`
+	Assignee string `json:"assignee,omitempty"`
+	Parent   string `json:"parent,omitempty"`
+}
+
+func toSummaryJSON(t *ticket.Ticket) ticketSummaryJSON {
+	return ticketSummaryJSON{
+		ID:       t.ID,
+		Title:    t.Title,
+		Status:   string(t.Status),
+		Stage:    string(t.Stage),
+		Priority: t.Priority,
+		Type:     string(t.Type),
+		Assignee: t.Assignee,
+		Parent:   t.Parent,
+	}
+}
+
+// Full JSON representation of a ticket — used only by ticket_show.
 type ticketJSON struct {
 	ID            string       `json:"id"`
 	Status        string       `json:"status,omitempty"`
@@ -188,7 +213,7 @@ func textResult(text string) (*mcp.CallToolResult, error) {
 }
 
 func jsonResult(v any) (*mcp.CallToolResult, error) {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +238,7 @@ type listArgs struct {
 	Assignee string `json:"assignee,omitempty" jsonschema:"filter by assignee name"`
 	Tag      string `json:"tag,omitempty" jsonschema:"filter by tag"`
 	Parent   string `json:"parent,omitempty" jsonschema:"filter by parent ticket ID"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"max tickets to return (default 50)"`
 }
 
 func registerList(server *mcp.Server, store *ticket.FileStore) {
@@ -257,9 +283,18 @@ func registerList(server *mcp.Server, store *ticket.FileStore) {
 		tickets = ticket.Filter(tickets, opts)
 		ticket.SortByStatusPriorityID(tickets)
 
-		var result []ticketJSON
+		limit := args.Limit
+		if limit <= 0 {
+			limit = 50
+		}
+		if limit > len(tickets) {
+			limit = len(tickets)
+		}
+		tickets = tickets[:limit]
+
+		var result []ticketSummaryJSON
 		for _, t := range tickets {
-			result = append(result, toJSON(t))
+			result = append(result, toSummaryJSON(t))
 		}
 
 		r, err := jsonResult(result)
@@ -361,7 +396,7 @@ func registerCreate(server *mcp.Server, store *ticket.FileStore) {
 			return r, nil, nil
 		}
 
-		r, err := jsonResult(toJSON(t))
+		r, err := jsonResult(toSummaryJSON(t))
 		return r, nil, err
 	})
 }
@@ -446,7 +481,7 @@ func registerEdit(server *mcp.Server, store *ticket.FileStore) {
 
 		// Re-read to get propagated state.
 		t, _ = store.Get(t.ID)
-		r, err := jsonResult(toJSON(t))
+		r, err := jsonResult(toSummaryJSON(t))
 		return r, nil, err
 	})
 }
@@ -477,7 +512,7 @@ func registerAddNote(server *mcp.Server, store *ticket.FileStore) {
 			return r, nil, nil
 		}
 
-		r, err := jsonResult(toJSON(t))
+		r, err := jsonResult(toSummaryJSON(t))
 		return r, nil, err
 	})
 }
@@ -519,7 +554,7 @@ func registerDep(server *mcp.Server, store *ticket.FileStore) {
 			return r, nil, nil
 		}
 
-		r, err := jsonResult(toJSON(t))
+		r, err := jsonResult(toSummaryJSON(t))
 		return r, nil, err
 	})
 }
@@ -565,7 +600,7 @@ func registerLink(server *mcp.Server, store *ticket.FileStore) {
 			return r, nil, nil
 		}
 
-		r, err := jsonResult(toJSON(t))
+		r, err := jsonResult(toSummaryJSON(t))
 		return r, nil, err
 	})
 }
@@ -596,9 +631,9 @@ func registerReady(server *mcp.Server, store *ticket.FileStore) {
 		ready = ticket.Filter(ready, opts)
 		ticket.SortByPriorityID(ready)
 
-		var result []ticketJSON
+		var result []ticketSummaryJSON
 		for _, t := range ready {
-			result = append(result, toJSON(t))
+			result = append(result, toSummaryJSON(t))
 		}
 
 		r, err := jsonResult(result)
@@ -627,9 +662,9 @@ func registerBlocked(server *mcp.Server, store *ticket.FileStore) {
 		blocked = ticket.Filter(blocked, opts)
 		ticket.SortByPriorityID(blocked)
 
-		var result []ticketJSON
+		var result []ticketSummaryJSON
 		for _, t := range blocked {
-			result = append(result, toJSON(t))
+			result = append(result, toSummaryJSON(t))
 		}
 
 		r, err := jsonResult(result)
@@ -707,7 +742,7 @@ func registerAdvance(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		t, _ := store.Get(args.ID)
-		r, jsonErr := jsonResult(toJSON(t))
+		r, jsonErr := jsonResult(toSummaryJSON(t))
 		return r, nil, jsonErr
 	})
 }
@@ -748,7 +783,7 @@ func registerReview(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		t, _ := store.Get(args.ID)
-		r, jsonErr := jsonResult(toJSON(t))
+		r, jsonErr := jsonResult(toSummaryJSON(t))
 		return r, nil, jsonErr
 	})
 }
@@ -771,7 +806,7 @@ func registerSkip(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		t, _ := store.Get(args.ID)
-		r, jsonErr := jsonResult(toJSON(t))
+		r, jsonErr := jsonResult(toSummaryJSON(t))
 		return r, nil, jsonErr
 	})
 }
@@ -806,17 +841,17 @@ func registerInbox(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		type inboxItemJSON struct {
-			Ticket ticketJSON `json:"ticket"`
-			Action string     `json:"action"`
-			Detail string     `json:"detail"`
+			ticketSummaryJSON
+			Action string `json:"action"`
+			Detail string `json:"detail"`
 		}
 
 		var result []inboxItemJSON
 		for _, item := range items {
 			result = append(result, inboxItemJSON{
-				Ticket: toJSON(item.Ticket),
-				Action: string(item.Action),
-				Detail: item.Detail,
+				ticketSummaryJSON: toSummaryJSON(item.Ticket),
+				Action:            string(item.Action),
+				Detail:            item.Detail,
 			})
 		}
 
@@ -842,7 +877,7 @@ func registerClaim(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		t, _ := store.Get(args.ID)
-		r, jsonErr := jsonResult(toJSON(t))
+		r, jsonErr := jsonResult(toSummaryJSON(t))
 		return r, nil, jsonErr
 	})
 }
@@ -870,7 +905,7 @@ func registerLinkSession(server *mcp.Server, store *ticket.FileStore) {
 
 		for _, c := range t.Conversations {
 			if c == args.SessionID {
-				r, jsonErr := jsonResult(toJSON(t))
+				r, jsonErr := jsonResult(toSummaryJSON(t))
 				return r, nil, jsonErr
 			}
 		}
@@ -882,7 +917,7 @@ func registerLinkSession(server *mcp.Server, store *ticket.FileStore) {
 		}
 
 		t, _ = store.Get(t.ID)
-		r, jsonErr := jsonResult(toJSON(t))
+		r, jsonErr := jsonResult(toSummaryJSON(t))
 		return r, nil, jsonErr
 	})
 }

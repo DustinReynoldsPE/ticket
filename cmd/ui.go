@@ -5,7 +5,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/EnderRealm/ticket/internal/tui"
+	"github.com/DustinReynoldsPE/ticket/internal/tui"
 	"github.com/spf13/cobra"
 )
 

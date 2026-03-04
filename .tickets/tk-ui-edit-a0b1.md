@@ -1,23 +1,15 @@
 ---
 id: tk-ui-edit-a0b1
 stage: done
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-03-01T00:46:08Z
 type: bug
 priority: 1
+version: 1
 ---
 # 'tk ui' on the edit panel editing a note flows off screen rather than wrapping
-
-
-
-
-
-
-
-
-
 
 When editing a ticket in `tk ui`, the note field (and description) is a single-line text input that scrolls horizontally. Long text flows off the right edge of the screen instead of wrapping to the next line. This makes it difficult to compose or review longer notes.
 

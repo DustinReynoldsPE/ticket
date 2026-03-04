@@ -1,7 +1,7 @@
 ---
 id: show-encouraging-message-f072
 stage: done
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-27T07:08:22Z
@@ -9,6 +9,7 @@ type: feature
 priority: 3
 assignee: Steve Macbeth
 tags: [ux]
+version: 1
 ---
 # Show encouraging message on empty listing output
 

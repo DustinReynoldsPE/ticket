@@ -1,7 +1,7 @@
 ---
 id: tk-ui-verify-6163
 stage: done
-status: in_progress
+status: closed
 review: approved
 deps: []
 links: []
@@ -9,13 +9,9 @@ created: 2026-03-01T00:47:17Z
 type: feature
 priority: 0
 skipped: [spec, design, implement, test]
+version: 1
 ---
 # 'tk ui' on the verify tab there should be an easy (v)erify command to verify and move to the next stage
-
-
-
-
-
 
 On the verify tab, pressing v should advance the selected ticket to the next stage. Also added R on review tab to approve review.
 

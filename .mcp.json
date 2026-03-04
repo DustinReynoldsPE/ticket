@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tk": {
+      "command": "tk",
+      "args": ["serve"]
+    }
+  }
+}

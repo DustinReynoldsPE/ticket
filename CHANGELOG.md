@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- MCP response optimization: compact JSON, summary projections for list/ready/blocked/inbox, slim mutation responses (~60-80% context token savings)
+- `ticket_list` MCP tool accepts `limit` parameter (default 50)
 - `tk claim <id>` command with assignee enforcement — fails if already assigned to someone else, `--force` to override
 - `ticket_claim` MCP tool for AI agent access to claim
 - Optimistic locking via `version` counter in frontmatter — concurrent updates to the same ticket are rejected with a conflict error

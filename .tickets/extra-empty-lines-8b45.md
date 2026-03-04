@@ -1,23 +1,15 @@
 ---
 id: extra-empty-lines-8b45
 stage: done
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-03-01T01:32:38Z
 type: bug
 priority: 0
+version: 1
 ---
 # Extra empty lines in the note field
-
-
-
-
-
-
-
-
-
 
 Every store.Update() call triggers a parse→serialize round-trip. In parseBody (format.go:236), the body is trimmed with TrimRight (trailing newlines only), but the serializer adds a \n before the body (line 101). This means each round-trip prepends one additional blank line to the body. After N updates, the file has N blank lines between the title and description.\n\nRoot cause: parseBody line 236 uses strings.TrimRight instead of strings.TrimSpace.\nFix: change to strings.TrimSpace to trim both leading and trailing whitespace.
 

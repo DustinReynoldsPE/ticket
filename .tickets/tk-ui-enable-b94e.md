@@ -1,22 +1,16 @@
 ---
 id: tk-ui-enable-b94e
 stage: done
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-03-01T00:23:16Z
 type: feature
 priority: 1
 skipped: [spec, design, implement]
+version: 1
 ---
 # 'tk ui' enable edit mode leveraging the create screen
-
-
-
-
-
-
-
 
 Allow editing of all fields except ID. Include editing for notes.
 
