@@ -126,6 +126,7 @@ func TestSerialize_RoundTrip(t *testing.T) {
 	tk := &Ticket{
 		ID:       "t-abc1",
 		Status:   StatusOpen,
+		Stage:    StageTriage,
 		Type:     TypeTask,
 		Priority: 1,
 		Assignee: "Steve Macbeth",
@@ -167,6 +168,7 @@ func TestSerialize_EmptyArrays(t *testing.T) {
 	tk := &Ticket{
 		ID:       "t-test",
 		Status:   StatusOpen,
+		Stage:    StageTriage,
 		Type:     TypeBug,
 		Priority: 2,
 		Deps:     []string{},
@@ -192,6 +194,7 @@ func TestSerialize_WithNotes(t *testing.T) {
 	tk := &Ticket{
 		ID:       "t-test",
 		Status:   StatusOpen,
+		Stage:    StageTriage,
 		Type:     TypeTask,
 		Priority: 2,
 		Deps:     []string{},
@@ -494,7 +497,7 @@ func TestSerialize_BodyNoBlankLineAccumulation(t *testing.T) {
 	tk := &Ticket{
 		ID:       "t-accum",
 		Status:   StatusOpen,
-		Stage:    "implement",
+		Stage:    StageImplement,
 		Type:     TypeBug,
 		Priority: 0,
 		Deps:     []string{},

@@ -6,6 +6,45 @@ import (
 	"time"
 )
 
+// Status represents the high-level lifecycle state of a ticket.
+type Status string
+
+const (
+	StatusOpen         Status = "open"
+	StatusInProgress   Status = "in_progress"
+	StatusNeedsTesting Status = "needs_testing"
+	StatusClosed       Status = "closed"
+)
+
+var validStatuses = map[Status]bool{
+	StatusOpen:         true,
+	StatusInProgress:   true,
+	StatusNeedsTesting: true,
+	StatusClosed:       true,
+}
+
+// ValidateStatus returns an error if s is not a recognized status.
+func ValidateStatus(s Status) error {
+	if validStatuses[s] {
+		return nil
+	}
+	return fmt.Errorf("invalid status %q: must be one of open, in_progress, needs_testing, closed", s)
+}
+
+// DeriveStatus computes the high-level status from a pipeline stage.
+func DeriveStatus(s Stage) Status {
+	switch s {
+	case StageDone:
+		return StatusClosed
+	case StageTest, StageVerify:
+		return StatusNeedsTesting
+	case StageTriage:
+		return StatusOpen
+	default:
+		return StatusInProgress
+	}
+}
+
 // Stage represents a position in a type-dependent pipeline.
 type Stage string
 
@@ -148,6 +187,7 @@ type Note struct {
 // content are parsed from the markdown outside the frontmatter.
 type Ticket struct {
 	ID          string     `yaml:"id"`
+	Status      Status     `yaml:"status,omitempty"`
 	Stage       Stage      `yaml:"stage,omitempty"`
 	Review      ReviewState `yaml:"review,omitempty"`
 	Risk        RiskLevel  `yaml:"risk,omitempty"`
@@ -177,11 +217,19 @@ func (t *Ticket) Validate() error {
 		return fmt.Errorf("ticket ID is required")
 	}
 
-	if t.Stage == "" {
+	if t.Status != "" {
+		if err := ValidateStatus(t.Status); err != nil {
+			return err
+		}
+	}
+
+	if t.Stage == "" && t.Status == "" {
 		return fmt.Errorf("ticket stage is required")
 	}
-	if err := ValidateStage(t.Stage); err != nil {
-		return err
+	if t.Stage != "" {
+		if err := ValidateStage(t.Stage); err != nil {
+			return err
+		}
 	}
 
 	if t.Review != ReviewNone {

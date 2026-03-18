@@ -97,7 +97,7 @@ Creating & Editing:
   delete <id> [id...]        Delete ticket(s)
 
 Pipeline:
-  advance <id> [--to stage]  Advance to next pipeline stage
+  advance <id> [--to stage]  Advance to next pipeline stage (blocks on unfinished deps; --force cannot reach done)
   skip <id> --to <stage>     Skip ahead with --reason justification
   review <id> --approve      Record review verdict (--approve or --reject)
   log <id>                   Show stage/review history

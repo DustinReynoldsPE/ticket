@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `advance` now enforces dependency blocking — tickets with unfinished deps cannot advance (not bypassable by `--force`)
+- `advance --force` can no longer be used for the final transition to done — the done gate must pass legitimately
+- Removed stale Status-based workflow tests (replaced with stage-only equivalents)
+
 ## [2.5.0] - 2026-03-03
 
 ### Added

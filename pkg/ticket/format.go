@@ -32,18 +32,8 @@ func Parse(r io.Reader) (*Ticket, error) {
 		return nil, fmt.Errorf("parsing frontmatter: %w", err)
 	}
 
-	// Auto-migrate legacy status → stage.
-	if t.Stage == "" {
-		var raw map[string]interface{}
-		_ = yaml.Unmarshal(front, &raw)
-		if s, ok := raw["status"].(string); ok {
-			if stage, found := legacyStatusToStage[s]; found {
-				t.Stage = stage
-			} else {
-				t.Stage = StageTriage
-			}
-		}
-	}
+	// No auto-migration during parse — status and stage are both
+	// first-class fields. Use MigrateTicket for explicit migration.
 
 	// Ensure nil slices become empty slices for consistent handling.
 	if t.Deps == nil {
@@ -74,7 +64,12 @@ func Serialize(t *Ticket) ([]byte, error) {
 	buf.WriteString("---\n")
 	writeField(&buf, "id", t.ID)
 
-	writeField(&buf, "stage", string(t.Stage))
+	if t.Status != "" {
+		writeField(&buf, "status", string(t.Status))
+	}
+	if t.Stage != "" {
+		writeField(&buf, "stage", string(t.Stage))
+	}
 	if t.Review != ReviewNone {
 		writeField(&buf, "review", string(t.Review))
 	}

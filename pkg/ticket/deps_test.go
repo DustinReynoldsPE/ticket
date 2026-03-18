@@ -20,9 +20,17 @@ func mk(id string, status Status, deps ...string) *Ticket {
 	if deps == nil {
 		deps = []string{}
 	}
+	// Derive stage from status for validation.
+	stageMap := map[Status]Stage{
+		StatusOpen:         StageTriage,
+		StatusInProgress:   StageImplement,
+		StatusNeedsTesting: StageTest,
+		StatusClosed:       StageDone,
+	}
 	return &Ticket{
 		ID:       id,
 		Status:   status,
+		Stage:    stageMap[status],
 		Type:     TypeTask,
 		Priority: 2,
 		Deps:     deps,

@@ -8,11 +8,11 @@ import (
 func makeTickets() []*Ticket {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	return []*Ticket{
-		{ID: "t-001", Status: StatusOpen, Type: TypeTask, Priority: 2, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"backend"}, Assignee: "Alice"},
-		{ID: "t-002", Status: StatusInProgress, Type: TypeBug, Priority: 0, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"frontend"}, Assignee: "Bob"},
-		{ID: "t-003", Status: StatusOpen, Type: TypeFeature, Priority: 1, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"backend"}, Parent: "t-epic"},
-		{ID: "t-004", Status: StatusClosed, Type: TypeEpic, Priority: 1, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{}},
-		{ID: "t-005", Status: StatusNeedsTesting, Type: TypeChore, Priority: 3, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"backend", "ci"}, Assignee: "Alice"},
+		{ID: "t-001", Status: StatusOpen, Stage: StageTriage, Type: TypeTask, Priority: 2, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"backend"}, Assignee: "Alice"},
+		{ID: "t-002", Status: StatusInProgress, Stage: StageImplement, Type: TypeBug, Priority: 0, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"frontend"}, Assignee: "Bob"},
+		{ID: "t-003", Status: StatusOpen, Stage: StageTriage, Type: TypeFeature, Priority: 1, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"backend"}, Parent: "t-epic"},
+		{ID: "t-004", Status: StatusClosed, Stage: StageDone, Type: TypeEpic, Priority: 1, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{}},
+		{ID: "t-005", Status: StatusNeedsTesting, Stage: StageTest, Type: TypeChore, Priority: 3, Created: now, Deps: []string{}, Links: []string{}, Tags: []string{"backend", "ci"}, Assignee: "Alice"},
 	}
 }
 

@@ -57,6 +57,7 @@ func TestTicketValidate(t *testing.T) {
 		return &Ticket{
 			ID:       "t-abc1",
 			Status:   StatusOpen,
+			Stage:    StageTriage,
 			Type:     TypeTask,
 			Priority: 2,
 			Created:  time.Now(),

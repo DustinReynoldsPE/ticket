@@ -7,6 +7,7 @@ import (
 
 // ListOptions carries filter parameters for listing tickets.
 type ListOptions struct {
+	Status   Status
 	Stage    Stage
 	Type     TicketType
 	Priority int // -1 means no filter
@@ -24,6 +25,9 @@ func DefaultListOptions() ListOptions {
 func Filter(tickets []*Ticket, opts ListOptions) []*Ticket {
 	var result []*Ticket
 	for _, t := range tickets {
+		if opts.Status != "" && t.Status != opts.Status {
+			continue
+		}
 		if opts.Stage != "" && t.Stage != opts.Stage {
 			continue
 		}
@@ -110,6 +114,36 @@ func TypeOrder(t TicketType) int {
 	default:
 		return 6
 	}
+}
+
+// statusOrder returns the sort rank for a status value.
+func statusOrder(s Status) int {
+	switch s {
+	case StatusInProgress:
+		return 1
+	case StatusOpen:
+		return 2
+	case StatusNeedsTesting:
+		return 3
+	case StatusClosed:
+		return 4
+	default:
+		return 5
+	}
+}
+
+// SortByStatusPriorityID sorts tickets by status order, then priority (asc), then ID.
+func SortByStatusPriorityID(tickets []*Ticket) {
+	sort.SliceStable(tickets, func(i, j int) bool {
+		si, sj := statusOrder(tickets[i].Status), statusOrder(tickets[j].Status)
+		if si != sj {
+			return si < sj
+		}
+		if tickets[i].Priority != tickets[j].Priority {
+			return tickets[i].Priority < tickets[j].Priority
+		}
+		return tickets[i].ID < tickets[j].ID
+	})
 }
 
 func hasTag(tags []string, tag string) bool {

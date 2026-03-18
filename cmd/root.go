@@ -34,7 +34,7 @@ Creating & Editing:
   delete <id> [id...]        Delete ticket(s)
 
 Pipeline:
-  advance <id> [--to <stage>] [--force]  Advance ticket to next pipeline stage
+  advance <id> [--to <stage>] [--force]  Advance ticket (blocks on deps; --force cannot reach done)
   skip <id> --to <stage> --reason '...'  Skip to a later stage with justification
   review <id> --approve|--reject         Record review verdict on current stage
   log <id>                               Show stage transition and review history

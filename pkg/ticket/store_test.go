@@ -20,6 +20,7 @@ func sampleTicket(id string) *Ticket {
 	return &Ticket{
 		ID:       id,
 		Status:   StatusOpen,
+		Stage:    StageTriage,
 		Type:     TypeTask,
 		Priority: 2,
 		Deps:     []string{},
@@ -80,6 +81,7 @@ func TestFileStore_Update(t *testing.T) {
 	}
 
 	tk.Status = StatusInProgress
+	tk.Stage = StageImplement
 	tk.Priority = 0
 	if err := store.Update(tk); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -278,6 +280,7 @@ func TestFileStore_EventLog(t *testing.T) {
 
 	// Update with status change should log "status".
 	tk.Status = StatusInProgress
+	tk.Stage = StageImplement
 	if err := store.Update(tk); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -288,12 +291,12 @@ func TestFileStore_EventLog(t *testing.T) {
 
 	// Update with stage change should log "stage".
 	tk, _ = store.Get("t-log1")
-	tk.Stage = StageImplement
+	tk.Stage = StageTest
 	if err := store.Update(tk); err != nil {
 		t.Fatalf("Update stage: %v", err)
 	}
 	data, _ = os.ReadFile(logPath)
-	if !strings.Contains(string(data), "t-log1 stage →implement") {
+	if !strings.Contains(string(data), "t-log1 stage implement→test") {
 		t.Errorf("log missing stage event: %s", data)
 	}
 

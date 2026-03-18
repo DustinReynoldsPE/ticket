@@ -2,6 +2,7 @@ package ticket
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,12 @@ func Advance(store *FileStore, id string, opts AdvanceOptions) (*AdvanceResult, 
 
 	if t.Stage == "" {
 		return nil, fmt.Errorf("ticket %s has no stage — migrate it first", id)
+	}
+
+	// Blocked tickets cannot advance regardless of --force.
+	if IsBlocked(store, t) {
+		blocking := BlockingDeps(store, t)
+		return nil, fmt.Errorf("ticket %s is blocked by unfinished dependencies: %s", id, strings.Join(blocking, ", "))
 	}
 
 	pipeline, err := PipelineFor(t.Type)
@@ -69,6 +76,11 @@ func Advance(store *FileStore, id string, opts AdvanceOptions) (*AdvanceResult, 
 
 	// Run gate checks.
 	result := &AdvanceResult{From: from, To: to, Skipped: skipped}
+
+	// Force cannot be used for the final transition to done.
+	if opts.Force && to == StageDone {
+		return nil, fmt.Errorf("cannot force-advance to done; the final stage transition must pass gate checks")
+	}
 
 	if !opts.Force {
 		gateErrors := CheckGates(t, to)

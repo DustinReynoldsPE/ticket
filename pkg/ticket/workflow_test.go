@@ -1,213 +1,10 @@
 package ticket
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
-
-func wfTicket(id string, status Status, parent string) *Ticket {
-	return &Ticket{
-		ID:       id,
-		Status:   status,
-		Type:     TypeTask,
-		Priority: 2,
-		Parent:   parent,
-		Deps:     []string{},
-		Links:    []string{},
-		Created:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		Title:    "Ticket " + id,
-		Body:     "\n",
-	}
-}
-
-func TestPropagateStatus_AllChildrenClosed(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	epic := wfTicket("t-epic", StatusInProgress, "")
-	epic.Type = TypeEpic
-	child1 := wfTicket("t-c1", StatusClosed, "t-epic")
-	child2 := wfTicket("t-c2", StatusClosed, "t-epic")
-
-	for _, tk := range []*Ticket{epic, child1, child2} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	changes, err := PropagateStatus(store, "t-c2")
-	if err != nil {
-		t.Fatalf("PropagateStatus: %v", err)
-	}
-	if len(changes) != 1 {
-		t.Fatalf("len(changes) = %d, want 1", len(changes))
-	}
-	if changes[0].NewStatus != StatusClosed {
-		t.Errorf("new status = %q, want closed", changes[0].NewStatus)
-	}
-
-	// Verify parent was updated on disk.
-	parent, _ := store.Get("t-epic")
-	if parent.Status != StatusClosed {
-		t.Errorf("parent status = %q, want closed", parent.Status)
-	}
-}
-
-func TestPropagateStatus_AllNeedsTesting(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	epic := wfTicket("t-epic", StatusInProgress, "")
-	epic.Type = TypeEpic
-	child1 := wfTicket("t-c1", StatusNeedsTesting, "t-epic")
-	child2 := wfTicket("t-c2", StatusClosed, "t-epic")
-
-	for _, tk := range []*Ticket{epic, child1, child2} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	changes, err := PropagateStatus(store, "t-c1")
-	if err != nil {
-		t.Fatalf("PropagateStatus: %v", err)
-	}
-	if len(changes) != 1 {
-		t.Fatalf("len(changes) = %d, want 1", len(changes))
-	}
-	if changes[0].NewStatus != StatusNeedsTesting {
-		t.Errorf("new status = %q, want needs_testing", changes[0].NewStatus)
-	}
-}
-
-func TestPropagateStatus_MixedNoChange(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	epic := wfTicket("t-epic", StatusInProgress, "")
-	epic.Type = TypeEpic
-	child1 := wfTicket("t-c1", StatusClosed, "t-epic")
-	child2 := wfTicket("t-c2", StatusOpen, "t-epic")
-
-	for _, tk := range []*Ticket{epic, child1, child2} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	changes, err := PropagateStatus(store, "t-c1")
-	if err != nil {
-		t.Fatalf("PropagateStatus: %v", err)
-	}
-	if len(changes) != 0 {
-		t.Errorf("expected no changes for mixed status, got %d", len(changes))
-	}
-}
-
-func TestPropagateStatus_NoParent(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	tk := wfTicket("t-1", StatusClosed, "")
-	if err := store.Create(tk); err != nil {
-		t.Fatal(err)
-	}
-
-	changes, err := PropagateStatus(store, "t-1")
-	if err != nil {
-		t.Fatalf("PropagateStatus: %v", err)
-	}
-	if len(changes) != 0 {
-		t.Errorf("expected no changes for orphan ticket, got %d", len(changes))
-	}
-}
-
-func TestPropagateStatus_Recursive(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	grandparent := wfTicket("t-gp", StatusInProgress, "")
-	grandparent.Type = TypeEpic
-	parent := wfTicket("t-p", StatusInProgress, "t-gp")
-	parent.Type = TypeEpic
-	child := wfTicket("t-c", StatusClosed, "t-p")
-
-	for _, tk := range []*Ticket{grandparent, parent, child} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// t-c is only child of t-p → t-p should close.
-	// t-p is only child of t-gp → t-gp should close too.
-	changes, err := PropagateStatus(store, "t-c")
-	if err != nil {
-		t.Fatalf("PropagateStatus: %v", err)
-	}
-	if len(changes) != 2 {
-		t.Fatalf("len(changes) = %d, want 2", len(changes))
-	}
-
-	gp, _ := store.Get("t-gp")
-	if gp.Status != StatusClosed {
-		t.Errorf("grandparent status = %q, want closed", gp.Status)
-	}
-}
-
-func TestSetStatus(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	epic := wfTicket("t-epic", StatusInProgress, "")
-	epic.Type = TypeEpic
-	child := wfTicket("t-c1", StatusOpen, "t-epic")
-
-	for _, tk := range []*Ticket{epic, child} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	changes, err := SetStatus(store, "t-c1", StatusClosed)
-	if err != nil {
-		t.Fatalf("SetStatus: %v", err)
-	}
-
-	// Child closed → epic should close (only child).
-	if len(changes) != 1 {
-		t.Fatalf("len(changes) = %d, want 1", len(changes))
-	}
-
-	c, _ := store.Get("t-c1")
-	if c.Status != StatusClosed {
-		t.Errorf("child status = %q, want closed", c.Status)
-	}
-}
-
-func TestSetStatus_InvalidStatus(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	tk := wfTicket("t-1", StatusOpen, "")
-	if err := store.Create(tk); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := SetStatus(store, "t-1", "invalid")
-	if err == nil {
-		t.Error("SetStatus with invalid status should fail")
-	}
-}
-
-func TestPropagateStatus_ParentAlreadyClosed(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-	epic := wfTicket("t-epic", StatusClosed, "")
-	epic.Type = TypeEpic
-	child := wfTicket("t-c1", StatusClosed, "t-epic")
-
-	for _, tk := range []*Ticket{epic, child} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	changes, err := PropagateStatus(store, "t-c1")
-	if err != nil {
-		t.Fatalf("PropagateStatus: %v", err)
-	}
-	// Parent already closed, no change needed.
-	if len(changes) != 0 {
-		t.Errorf("expected no changes when parent already closed, got %d", len(changes))
-	}
-}
-
-// --- Stage pipeline tests ---
 
 func stageTicket(id string, stage Stage, ticketType TicketType) *Ticket {
 	return &Ticket{
@@ -238,7 +35,6 @@ func TestAdvance_NextStage(t *testing.T) {
 		t.Errorf("Advance = %s→%s, want triage→implement", result.From, result.To)
 	}
 
-	// Verify persisted.
 	updated, _ := store.Get("t-adv")
 	if updated.Stage != StageImplement {
 		t.Errorf("persisted stage = %s, want implement", updated.Stage)
@@ -247,7 +43,6 @@ func TestAdvance_NextStage(t *testing.T) {
 
 func TestAdvance_GateFails(t *testing.T) {
 	store := NewFileStore(t.TempDir())
-	// Feature at spec, no AC, no review approval → should fail spec→design.
 	tk := stageTicket("t-gate", StageSpec, TypeFeature)
 	if err := store.Create(tk); err != nil {
 		t.Fatal(err)
@@ -261,7 +56,6 @@ func TestAdvance_GateFails(t *testing.T) {
 		t.Error("GateErrors should be populated")
 	}
 
-	// Verify ticket did not advance.
 	check, _ := store.Get("t-gate")
 	if check.Stage != StageSpec {
 		t.Errorf("stage should still be spec, got %s", check.Stage)
@@ -281,6 +75,111 @@ func TestAdvance_Force(t *testing.T) {
 	}
 	if result.To != StageDesign {
 		t.Errorf("forced advance to = %s, want design", result.To)
+	}
+}
+
+func TestAdvance_ForceCannotReachDone(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	tk := stageTicket("t-fdone", StageVerify, TypeTask)
+	if err := store.Create(tk); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Advance(store, "t-fdone", AdvanceOptions{Force: true})
+	if err == nil {
+		t.Fatal("Force advance to done should fail")
+	}
+	if !strings.Contains(err.Error(), "cannot force-advance to done") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Verify ticket did not advance.
+	check, _ := store.Get("t-fdone")
+	if check.Stage != StageVerify {
+		t.Errorf("stage should still be verify, got %s", check.Stage)
+	}
+}
+
+func TestAdvance_ForceCannotSkipToDone(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	tk := stageTicket("t-fskip", StageTriage, TypeChore)
+	if err := store.Create(tk); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Advance(store, "t-fskip", AdvanceOptions{
+		Force:  true,
+		SkipTo: StageDone,
+		Reason: "skip it all",
+	})
+	if err == nil {
+		t.Fatal("Force skip to done should fail")
+	}
+	if !strings.Contains(err.Error(), "cannot force-advance to done") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAdvance_BlockedByDeps(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	dep := stageTicket("t-dep", StageTriage, TypeTask)
+	tk := stageTicket("t-blocked", StageTriage, TypeChore)
+	tk.Deps = []string{"t-dep"}
+
+	for _, x := range []*Ticket{dep, tk} {
+		if err := store.Create(x); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := Advance(store, "t-blocked", AdvanceOptions{})
+	if err == nil {
+		t.Fatal("Advance on blocked ticket should fail")
+	}
+	if !strings.Contains(err.Error(), "blocked") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAdvance_BlockedNotBypassedByForce(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	dep := stageTicket("t-dep2", StageImplement, TypeTask)
+	tk := stageTicket("t-blk2", StageTriage, TypeChore)
+	tk.Deps = []string{"t-dep2"}
+
+	for _, x := range []*Ticket{dep, tk} {
+		if err := store.Create(x); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := Advance(store, "t-blk2", AdvanceOptions{Force: true})
+	if err == nil {
+		t.Fatal("Force should not bypass dep blocking")
+	}
+	if !strings.Contains(err.Error(), "blocked") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAdvance_UnblockedWhenDepsDone(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	dep := stageTicket("t-dep3", StageDone, TypeTask)
+	tk := stageTicket("t-unblk", StageTriage, TypeChore)
+	tk.Deps = []string{"t-dep3"}
+
+	for _, x := range []*Ticket{dep, tk} {
+		if err := store.Create(x); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := Advance(store, "t-unblk", AdvanceOptions{})
+	if err != nil {
+		t.Fatalf("Advance on unblocked ticket: %v", err)
+	}
+	if result.To != StageImplement {
+		t.Errorf("advance to = %s, want implement", result.To)
 	}
 }
 
@@ -364,17 +263,17 @@ func TestSkip_CannotGoBackward(t *testing.T) {
 
 func TestSetReview(t *testing.T) {
 	store := NewFileStore(t.TempDir())
-	tk := stageTicket("t-rev", StageDesign, TypeFeature)
+	tk := stageTicket("t-rev2", StageDesign, TypeFeature)
 	if err := store.Create(tk); err != nil {
 		t.Fatal(err)
 	}
 
-	err := SetReview(store, "t-rev", "human:steve", ReviewApproved, "looks good")
+	err := SetReview(store, "t-rev2", "human:steve", ReviewApproved, "looks good")
 	if err != nil {
 		t.Fatalf("SetReview: %v", err)
 	}
 
-	updated, _ := store.Get("t-rev")
+	updated, _ := store.Get("t-rev2")
 	if updated.Review != ReviewApproved {
 		t.Errorf("review = %s, want approved", updated.Review)
 	}
@@ -412,5 +311,93 @@ func TestPropagateStage_AllDone(t *testing.T) {
 	}
 	if changes[0].NewStage != StageDone {
 		t.Errorf("new stage = %s, want done", changes[0].NewStage)
+	}
+}
+
+func TestPropagateStage_NoParent(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	tk := stageTicket("t-1", StageDone, TypeTask)
+	if err := store.Create(tk); err != nil {
+		t.Fatal(err)
+	}
+
+	changes, err := PropagateStage(store, "t-1")
+	if err != nil {
+		t.Fatalf("PropagateStage: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes for orphan ticket, got %d", len(changes))
+	}
+}
+
+func TestPropagateStage_Recursive(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	grandparent := stageTicket("t-gp", StageDesign, TypeEpic)
+	parent := stageTicket("t-p", StageDesign, TypeEpic)
+	parent.Parent = "t-gp"
+	child := stageTicket("t-c", StageDone, TypeTask)
+	child.Parent = "t-p"
+
+	for _, tk := range []*Ticket{grandparent, parent, child} {
+		if err := store.Create(tk); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	changes, err := PropagateStage(store, "t-c")
+	if err != nil {
+		t.Fatalf("PropagateStage: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("len(changes) = %d, want 2", len(changes))
+	}
+
+	gp, _ := store.Get("t-gp")
+	if gp.Stage != StageDone {
+		t.Errorf("grandparent stage = %s, want done", gp.Stage)
+	}
+}
+
+func TestPropagateStage_ParentAlreadyDone(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	epic := stageTicket("t-epic", StageDone, TypeEpic)
+	child := stageTicket("t-c1", StageDone, TypeTask)
+	child.Parent = "t-epic"
+
+	for _, tk := range []*Ticket{epic, child} {
+		if err := store.Create(tk); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	changes, err := PropagateStage(store, "t-c1")
+	if err != nil {
+		t.Fatalf("PropagateStage: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes when parent already done, got %d", len(changes))
+	}
+}
+
+func TestPropagateStage_MixedNoChange(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	epic := stageTicket("t-epic", StageDesign, TypeEpic)
+	child1 := stageTicket("t-c1", StageDone, TypeTask)
+	child1.Parent = "t-epic"
+	child2 := stageTicket("t-c2", StageTriage, TypeTask)
+	child2.Parent = "t-epic"
+
+	for _, tk := range []*Ticket{epic, child1, child2} {
+		if err := store.Create(tk); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	changes, err := PropagateStage(store, "t-c1")
+	if err != nil {
+		t.Fatalf("PropagateStage: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes for mixed stages, got %d", len(changes))
 	}
 }
