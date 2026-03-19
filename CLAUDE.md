@@ -16,7 +16,7 @@ Go binary. Four layers sharing one core library:
 - `internal/tui/` — Bubbletea TUI for interactive browse and edit
 - `internal/mcp/` — MCP server for AI agent access via `tk serve`
 
-Tickets are markdown files with YAML frontmatter in `.tickets/` (configurable via `TICKETS_DIR` env var). Core YAML fields: `id`, `status`, `stage`, `deps`, `links`, `created`, `type`, `priority`, `assignee`, `parent`, `tags`, `review`, `risk`.
+Tickets are markdown files with YAML frontmatter in `.tickets/` (configurable via `TICKETS_DIR` env var). Core YAML fields: `id`, `stage`, `deps`, `links`, `created`, `type`, `priority`, `assignee`, `parent`, `tags`, `review`, `risk`.
 
 ## Testing
 

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Removed
+- **Status type completely removed** — the `Status` type, constants (`open`, `in_progress`, `needs_testing`, `closed`), `ValidateStatus()`, `DeriveStatus()`, `SortByStatusPriorityID()`, and the `--status` filter flag are all gone. Stage is now the sole state model.
+- Status field removed from Ticket struct, JSON output (CLI, MCP), and serialized YAML frontmatter
+- `--group-by=status` option removed from `ls`
+
+### Changed
+- Legacy tickets with `status:` but no `stage:` are now auto-migrated during parse (status mapped to stage, status field dropped on next save)
+- `MigrateAll()` simplified to re-parse and re-write all tickets (auto-migration handles the conversion)
+
 ### Fixed
 - `advance` now enforces dependency blocking — tickets with unfinished deps cannot advance (not bypassable by `--force`)
 - `advance --force` can no longer be used for the final transition to done — the done gate must pass legitimately

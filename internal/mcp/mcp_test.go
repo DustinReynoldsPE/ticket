@@ -62,9 +62,6 @@ func TestCreateTicket(t *testing.T) {
 	if ticket["stage"] != "triage" {
 		t.Errorf("stage = %q, want %q", ticket["stage"], "triage")
 	}
-	if ticket["status"] != "open" {
-		t.Errorf("status = %q, want %q", ticket["status"], "open")
-	}
 }
 
 func TestAddNotePreservesNewlines(t *testing.T) {
@@ -611,7 +608,7 @@ func TestListReturnsSummary(t *testing.T) {
 	}
 
 	// Summary fields must be present.
-	for _, field := range []string{"id", "title", "status", "stage", "type"} {
+	for _, field := range []string{"id", "title", "stage", "type"} {
 		if found[field] == nil || found[field] == "" {
 			t.Errorf("summary missing field %q", field)
 		}
@@ -704,7 +701,7 @@ func TestShowReturnsFull(t *testing.T) {
 	}
 
 	// Full fields must be present.
-	for _, field := range []string{"id", "title", "status", "stage", "type", "created", "version"} {
+	for _, field := range []string{"id", "title", "stage", "type", "created", "version"} {
 		if ticket[field] == nil {
 			t.Errorf("show response missing field %q", field)
 		}

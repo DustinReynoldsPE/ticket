@@ -1,6 +1,6 @@
 ---
 id: docs-update-readme-7296
-stage: triage
+stage: done
 status: open
 deps: [tests-update-tests-b353]
 links: []
@@ -8,7 +8,8 @@ created: 2026-03-04T05:03:03Z
 type: task
 priority: 2
 parent: remove-status-stage-7439
-version: 2
+skipped: [implement, test, verify]
+version: 3
 ---
 # Docs: Update README and CHANGELOG for v3.0.0
 

@@ -45,7 +45,6 @@ func NewServer(ticketsDir string) *mcp.Server {
 type ticketSummaryJSON struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
-	Status   string `json:"status"`
 	Stage    string `json:"stage"`
 	Priority int    `json:"priority"`
 	Type     string `json:"type"`
@@ -54,14 +53,9 @@ type ticketSummaryJSON struct {
 }
 
 func toSummaryJSON(t *ticket.Ticket) ticketSummaryJSON {
-	status := string(t.Status)
-	if status == "" {
-		status = string(ticket.DeriveStatus(t.Stage))
-	}
 	return ticketSummaryJSON{
 		ID:       t.ID,
 		Title:    t.Title,
-		Status:   status,
 		Stage:    string(t.Stage),
 		Priority: t.Priority,
 		Type:     string(t.Type),
@@ -73,7 +67,6 @@ func toSummaryJSON(t *ticket.Ticket) ticketSummaryJSON {
 // Full JSON representation of a ticket — used only by ticket_show.
 type ticketJSON struct {
 	ID            string       `json:"id"`
-	Status        string       `json:"status"`
 	Stage         string       `json:"stage"`
 	Review        string       `json:"review,omitempty"`
 	Risk          string       `json:"risk,omitempty"`
@@ -112,13 +105,8 @@ type noteJSON struct {
 }
 
 func toJSON(t *ticket.Ticket) ticketJSON {
-	status := string(t.Status)
-	if status == "" {
-		status = string(ticket.DeriveStatus(t.Stage))
-	}
 	j := ticketJSON{
 		ID:            t.ID,
-		Status:        status,
 		Stage:         string(t.Stage),
 		Review:        string(t.Review),
 		Risk:          string(t.Risk),
