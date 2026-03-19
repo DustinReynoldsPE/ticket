@@ -19,7 +19,6 @@ func testStore(t *testing.T) (*FileStore, func()) {
 func sampleTicket(id string) *Ticket {
 	return &Ticket{
 		ID:       id,
-		Status:   StatusOpen,
 		Stage:    StageTriage,
 		Type:     TypeTask,
 		Priority: 2,
@@ -66,10 +65,10 @@ func TestFileStore_CreateDuplicate(t *testing.T) {
 func TestFileStore_CreateInvalid(t *testing.T) {
 	store, _ := testStore(t)
 	tk := sampleTicket("t-bad1")
-	tk.Status = "invalid"
+	tk.Type = "invalid"
 
 	if err := store.Create(tk); err == nil {
-		t.Error("Create with invalid status should fail")
+		t.Error("Create with invalid type should fail")
 	}
 }
 
@@ -80,7 +79,6 @@ func TestFileStore_Update(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	tk.Status = StatusInProgress
 	tk.Stage = StageImplement
 	tk.Priority = 0
 	if err := store.Update(tk); err != nil {
@@ -91,8 +89,8 @@ func TestFileStore_Update(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status != StatusInProgress {
-		t.Errorf("Status = %q, want %q", got.Status, StatusInProgress)
+	if got.Stage != StageImplement {
+		t.Errorf("Stage = %q, want %q", got.Stage, StageImplement)
 	}
 	if got.Priority != 0 {
 		t.Errorf("Priority = %d, want 0", got.Priority)
@@ -278,18 +276,12 @@ func TestFileStore_EventLog(t *testing.T) {
 		t.Errorf("log missing create event: %s", data)
 	}
 
-	// Update with status change should log "status".
-	tk.Status = StatusInProgress
+	// Update with stage change should log "stage".
 	tk.Stage = StageImplement
 	if err := store.Update(tk); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	data, _ = os.ReadFile(logPath)
-	if !strings.Contains(string(data), "t-log1 status open→in_progress") {
-		t.Errorf("log missing status event: %s", data)
-	}
 
-	// Update with stage change should log "stage".
 	tk, _ = store.Get("t-log1")
 	tk.Stage = StageTest
 	if err := store.Update(tk); err != nil {

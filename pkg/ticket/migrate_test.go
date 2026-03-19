@@ -1,99 +1,42 @@
 package ticket
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestNeedsMigration(t *testing.T) {
-	// Legacy ticket with status, no stage.
-	legacy := &Ticket{Status: StatusOpen}
-	if !NeedsMigration(legacy) {
-		t.Error("legacy ticket should need migration")
+func TestMigrateAll_LegacyStatusToStage(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+
+	// Write a legacy ticket file with status but no stage.
+	legacy := `---
+id: t-1
+status: open
+deps: []
+links: []
+created: 2026-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Legacy ticket
+
+Description.
+`
+	if err := os.WriteFile(filepath.Join(dir, "t-1.md"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	// Already migrated.
-	migrated := &Ticket{Stage: StageTriage, Status: StatusOpen}
-	if NeedsMigration(migrated) {
-		t.Error("ticket with stage should not need migration")
-	}
-
-	// Stage-only ticket.
-	stageOnly := &Ticket{Stage: StageImplement}
-	if NeedsMigration(stageOnly) {
-		t.Error("stage-only ticket should not need migration")
-	}
-}
-
-func TestMigrateTicket_AllMappings(t *testing.T) {
-	tests := []struct {
-		status Status
-		want   Stage
-	}{
-		{StatusOpen, StageTriage},
-		{StatusInProgress, StageImplement},
-		{StatusNeedsTesting, StageTest},
-		{StatusClosed, StageDone},
-	}
-
-	for _, tt := range tests {
-		tk := &Ticket{
-			ID:       "t-test",
-			Status:   tt.status,
-			Type:     TypeTask,
-			Priority: 2,
-			Deps:     []string{},
-			Links:    []string{},
-			Created:  time.Now(),
-		}
-		changed := MigrateTicket(tk)
-		if !changed {
-			t.Errorf("MigrateTicket(%s) returned false", tt.status)
-		}
-		if tk.Stage != tt.want {
-			t.Errorf("MigrateTicket(%s): stage = %s, want %s", tt.status, tk.Stage, tt.want)
-		}
-		// Status should be preserved for backward compat.
-		if tk.Status != tt.status {
-			t.Errorf("MigrateTicket(%s): status was cleared", tt.status)
-		}
-	}
-}
-
-func TestMigrateTicket_Idempotent(t *testing.T) {
-	tk := &Ticket{
-		ID:     "t-test",
-		Status: StatusOpen,
-		Stage:  StageTriage,
-		Type:   TypeTask,
-	}
-	changed := MigrateTicket(tk)
-	if changed {
-		t.Error("MigrateTicket on already-migrated ticket should return false")
-	}
-}
-
-func TestMigrateAll(t *testing.T) {
-	store := NewFileStore(t.TempDir())
-
-	// Create a mix of legacy and stage-based tickets.
-	legacy1 := &Ticket{
-		ID: "t-1", Status: StatusOpen, Type: TypeTask, Priority: 2,
-		Deps: []string{}, Links: []string{}, Created: time.Now(), Title: "Legacy 1", Body: "\n",
-	}
-	legacy2 := &Ticket{
-		ID: "t-2", Status: StatusClosed, Type: TypeBug, Priority: 1,
-		Deps: []string{}, Links: []string{}, Created: time.Now(), Title: "Legacy 2", Body: "\n",
-	}
+	// Write a modern ticket with stage.
 	modern := &Ticket{
-		ID: "t-3", Stage: StageDesign, Type: TypeFeature, Priority: 0,
+		ID: "t-2", Stage: StageDesign, Type: TypeFeature, Priority: 0,
 		Deps: []string{}, Links: []string{}, Created: time.Now(), Title: "Modern", Body: "\n",
 	}
-
-	for _, tk := range []*Ticket{legacy1, legacy2, modern} {
-		if err := store.Create(tk); err != nil {
-			t.Fatal(err)
-		}
+	if err := store.Create(modern); err != nil {
+		t.Fatal(err)
 	}
 
 	count, err := MigrateAll(store)
@@ -104,17 +47,48 @@ func TestMigrateAll(t *testing.T) {
 		t.Errorf("MigrateAll migrated %d tickets, want 2", count)
 	}
 
-	// Verify.
-	t1, _ := store.Get("t-1")
+	// Verify legacy ticket now has stage and no status in file.
+	t1, err := store.Get("t-1")
+	if err != nil {
+		t.Fatalf("Get t-1: %v", err)
+	}
 	if t1.Stage != StageTriage {
 		t.Errorf("t-1 stage = %s, want triage", t1.Stage)
 	}
-	t2, _ := store.Get("t-2")
-	if t2.Stage != StageDone {
-		t.Errorf("t-2 stage = %s, want done", t2.Stage)
+
+	// Verify the file no longer contains "status:".
+	data, _ := os.ReadFile(filepath.Join(dir, "t-1.md"))
+	if strings.Contains(string(data), "status:") {
+		t.Error("migrated file should not contain status field")
 	}
-	t3, _ := store.Get("t-3")
-	if t3.Stage != StageDesign {
-		t.Errorf("t-3 stage = %s, want design (unchanged)", t3.Stage)
+
+	// Modern ticket unchanged.
+	t2, _ := store.Get("t-2")
+	if t2.Stage != StageDesign {
+		t.Errorf("t-2 stage = %s, want design (unchanged)", t2.Stage)
+	}
+}
+
+func TestParse_AllLegacyStatusMappings(t *testing.T) {
+	tests := []struct {
+		status string
+		want   Stage
+	}{
+		{"open", StageTriage},
+		{"in_progress", StageImplement},
+		{"needs_testing", StageTest},
+		{"closed", StageDone},
+	}
+
+	for _, tt := range tests {
+		input := "---\nid: t-test\nstatus: " + tt.status + "\ndeps: []\nlinks: []\ncreated: 2026-01-01T00:00:00Z\ntype: task\npriority: 2\n---\n# Test\n"
+		tk, err := Parse(strings.NewReader(input))
+		if err != nil {
+			t.Errorf("Parse(status=%s): %v", tt.status, err)
+			continue
+		}
+		if tk.Stage != tt.want {
+			t.Errorf("Parse(status=%s): stage = %s, want %s", tt.status, tk.Stage, tt.want)
+		}
 	}
 }

@@ -1,13 +1,13 @@
 ---
 id: remove-status-stage-7439
-stage: design
+stage: done
 status: open
 deps: []
 links: []
 created: 2026-03-04T05:01:51Z
 type: epic
 priority: 2
-version: 5
+version: 6
 ---
 # Remove Status, Stage-only state model
 

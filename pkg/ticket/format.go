@@ -21,19 +21,31 @@ var legacyStatusToStage = map[string]Stage{
 }
 
 // Parse reads a ticket from markdown with YAML frontmatter.
+// Legacy tickets with a status field but no stage are auto-migrated.
 func Parse(r io.Reader) (*Ticket, error) {
 	front, body, err := splitFrontmatter(r)
 	if err != nil {
 		return nil, err
 	}
 
-	var t Ticket
-	if err := yaml.Unmarshal(front, &t); err != nil {
+	// Use a wrapper struct to capture legacy status fields during parse.
+	var raw struct {
+		Ticket `yaml:",inline"`
+		Status string `yaml:"status,omitempty"`
+	}
+	if err := yaml.Unmarshal(front, &raw); err != nil {
 		return nil, fmt.Errorf("parsing frontmatter: %w", err)
 	}
+	t := raw.Ticket
 
-	// No auto-migration during parse — status and stage are both
-	// first-class fields. Use MigrateTicket for explicit migration.
+	// Auto-migrate: if stage is empty but legacy status is present, derive stage.
+	if t.Stage == "" && raw.Status != "" {
+		if stage, ok := legacyStatusToStage[raw.Status]; ok {
+			t.Stage = stage
+		} else {
+			t.Stage = StageTriage
+		}
+	}
 
 	// Ensure nil slices become empty slices for consistent handling.
 	if t.Deps == nil {
@@ -64,9 +76,6 @@ func Serialize(t *Ticket) ([]byte, error) {
 	buf.WriteString("---\n")
 	writeField(&buf, "id", t.ID)
 
-	if t.Status != "" {
-		writeField(&buf, "status", string(t.Status))
-	}
 	if t.Stage != "" {
 		writeField(&buf, "stage", string(t.Stage))
 	}

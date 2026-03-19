@@ -1,6 +1,6 @@
 ---
 id: tests-update-tests-b353
-stage: triage
+stage: done
 status: open
 deps: [core-replace-status-83c2, core-remove-status-3402, cli-remove-status-cc0e, mcp-replace-status-5712, tui-remove-status-9771, cli-update-show-98ca]
 links: []
@@ -8,7 +8,8 @@ created: 2026-03-04T05:02:54Z
 type: task
 priority: 2
 parent: remove-status-stage-7439
-version: 7
+skipped: [implement, test, verify]
+version: 8
 ---
 # Tests: Update all tests for stage-only model
 
