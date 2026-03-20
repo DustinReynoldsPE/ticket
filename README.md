@@ -98,13 +98,17 @@ Creating & Editing:
 
 Pipeline:
   advance <id> [--to stage]  Advance to next pipeline stage (blocks on unfinished deps; --force cannot reach done)
-  skip <id> --to <stage>     Skip ahead with --reason justification
+  skip <id> --to <stage>     Skip ahead with --reason (bypasses gates, can reach done)
   review <id> --approve      Record review verdict (--approve or --reject)
   log <id>                   Show stage/review history
   pipeline [--stage X]       Show tickets grouped by pipeline stage
   inbox                      Show tickets needing human attention
   next                       Per-project next actions
   migrate [--dry-run]        Migrate legacy tickets to stage pipeline
+
+Hierarchy:
+  tree [filters]             Show tickets as parent/child tree
+  ls --tree [filters]        Same tree view via list flag
 
 Dependencies & Links:
   dep <id> <dep-id>          Add dependency
