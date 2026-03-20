@@ -227,38 +227,40 @@ func printTree(tickets []*ticket.Ticket) {
 		return a.ID < b.ID
 	})
 
-	var walk func(id string, prefix string, last bool)
-	walk = func(id string, prefix string, last bool) {
+	var walk func(id string, prefix string, last bool, isRoot bool)
+	walk = func(id string, prefix string, last bool, isRoot bool) {
 		t := byID[id]
-		branch := "├── "
-		if last {
-			branch = "└── "
-		}
-		if prefix == "" {
-			branch = ""
-		}
-		fmt.Printf("%s%s%-9s P%d  %-11s %-14s %s\n",
-			prefix, branch, t.ID, t.Priority, t.Type, t.Stage, t.Title)
-
-		childPrefix := prefix
-		if prefix != "" {
+		if isRoot {
+			fmt.Printf("%-9s P%d  %-11s %-14s %s\n",
+				t.ID, t.Priority, t.Type, t.Stage, t.Title)
+		} else {
+			branch := "├── "
 			if last {
-				childPrefix += "    "
-			} else {
-				childPrefix += "│   "
+				branch = "└── "
 			}
+			fmt.Printf("%s%s%s P%d  %s  %s  %s\n",
+				prefix, branch, t.ID, t.Priority, t.Type, t.Stage, t.Title)
+		}
+
+		var childPrefix string
+		if isRoot {
+			childPrefix = ""
+		} else if last {
+			childPrefix = prefix + "    "
+		} else {
+			childPrefix = prefix + "│   "
 		}
 		kids := children[id]
 		for i, kid := range kids {
-			walk(kid, childPrefix, i == len(kids)-1)
+			walk(kid, childPrefix, i == len(kids)-1, false)
 		}
 	}
 
 	for i, id := range roots {
-		if i > 0 && len(children[id]) > 0 {
+		if i > 0 {
 			fmt.Println()
 		}
-		walk(id, "", i == len(roots)-1)
+		walk(id, "", false, true)
 	}
 }
 
