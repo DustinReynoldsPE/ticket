@@ -256,11 +256,14 @@ func printTree(tickets []*ticket.Ticket) {
 		}
 	}
 
+	prevHadChildren := false
 	for i, id := range roots {
-		if i > 0 {
+		hasKids := len(children[id]) > 0
+		if i > 0 && (hasKids || prevHadChildren) {
 			fmt.Println()
 		}
 		walk(id, "", false, true)
+		prevHadChildren = hasKids
 	}
 }
 
