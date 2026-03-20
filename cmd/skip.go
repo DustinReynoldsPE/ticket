@@ -10,7 +10,7 @@ import (
 
 var skipCmd = &cobra.Command{
 	Use:   "skip <id> --to <stage> --reason '...'",
-	Short: "Skip to a named stage with audit trail",
+	Short: "Skip to a later stage (bypasses gates, can reach done)",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runSkip,
 }

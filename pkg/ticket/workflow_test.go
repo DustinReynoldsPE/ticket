@@ -89,7 +89,7 @@ func TestAdvance_ForceCannotReachDone(t *testing.T) {
 	if err == nil {
 		t.Fatal("Force advance to done should fail")
 	}
-	if !strings.Contains(err.Error(), "cannot force-advance to done") {
+	if !strings.Contains(err.Error(), "cannot force-advance to done") && !strings.Contains(err.Error(), "use 'tk skip'") {
 		t.Errorf("unexpected error: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestAdvance_ForceCannotSkipToDone(t *testing.T) {
 	if err == nil {
 		t.Fatal("Force skip to done should fail")
 	}
-	if !strings.Contains(err.Error(), "cannot force-advance to done") {
+	if !strings.Contains(err.Error(), "cannot force-advance to done") && !strings.Contains(err.Error(), "use 'tk skip'") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -245,6 +245,47 @@ func TestSkip_RequiresReason(t *testing.T) {
 	_, err := Skip(store, "t-skip2", StageImplement, "")
 	if err == nil {
 		t.Error("Skip without reason should fail")
+	}
+}
+
+func TestSkip_ToDone(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	tk := stageTicket("t-skip-done", StageVerify, TypeTask)
+	if err := store.Create(tk); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Skip(store, "t-skip-done", StageDone, "verified manually")
+	if err != nil {
+		t.Fatalf("Skip to done: %v", err)
+	}
+	if result.To != StageDone {
+		t.Errorf("skip to = %s, want done", result.To)
+	}
+
+	updated, _ := store.Get("t-skip-done")
+	if updated.Stage != StageDone {
+		t.Errorf("persisted stage = %s, want done", updated.Stage)
+	}
+}
+
+func TestSkip_ToDoneFromEarly(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	tk := stageTicket("t-skip-early", StageTriage, TypeTask)
+	if err := store.Create(tk); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Skip(store, "t-skip-early", StageDone, "not needed")
+	if err != nil {
+		t.Fatalf("Skip to done from triage: %v", err)
+	}
+	if result.To != StageDone {
+		t.Errorf("skip to = %s, want done", result.To)
+	}
+	// Should have skipped implement, test, verify
+	if len(result.Skipped) != 3 {
+		t.Errorf("skipped %d stages, want 3", len(result.Skipped))
 	}
 }
 

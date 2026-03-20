@@ -23,6 +23,7 @@ func init() {
 	lsCmd.Flags().String("group-by", "", "group by: workflow | type | pipeline | priority")
 	lsCmd.Flags().Bool("group", false, "shorthand for --group-by=workflow")
 	lsCmd.Flags().Bool("flat", false, "flat list (no grouping)")
+	lsCmd.Flags().Bool("tree", false, "show parent/child hierarchy as tree")
 
 	rootCmd.AddCommand(lsCmd)
 }
@@ -69,6 +70,12 @@ func runLs(cmd *cobra.Command, args []string) error {
 
 	if len(tickets) == 0 {
 		printEmptyMessage()
+		return nil
+	}
+
+	tree, _ := cmd.Flags().GetBool("tree")
+	if tree {
+		printTree(tickets)
 		return nil
 	}
 
@@ -182,6 +189,77 @@ func printRow(t *ticket.Ticket) {
 
 	fmt.Printf("%-9s P%d  %-11s %-14s %s%s\n",
 		t.ID, t.Priority, t.Type, t.Stage, t.Title, depStr)
+}
+
+func printTree(tickets []*ticket.Ticket) {
+	byID := map[string]*ticket.Ticket{}
+	children := map[string][]string{} // parent -> child IDs
+	for _, t := range tickets {
+		byID[t.ID] = t
+	}
+	// Build child map only for tickets in the filtered set.
+	for _, t := range tickets {
+		children[t.Parent] = append(children[t.Parent], t.ID)
+	}
+	// Sort children within each parent by priority then ID.
+	for k := range children {
+		sort.Slice(children[k], func(i, j int) bool {
+			a, b := byID[children[k][i]], byID[children[k][j]]
+			if a.Priority != b.Priority {
+				return a.Priority < b.Priority
+			}
+			return a.ID < b.ID
+		})
+	}
+
+	// Find roots: tickets whose parent is empty or not in the filtered set.
+	var roots []string
+	for _, t := range tickets {
+		if t.Parent == "" || byID[t.Parent] == nil {
+			roots = append(roots, t.ID)
+		}
+	}
+	sort.Slice(roots, func(i, j int) bool {
+		a, b := byID[roots[i]], byID[roots[j]]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+		return a.ID < b.ID
+	})
+
+	var walk func(id string, prefix string, last bool)
+	walk = func(id string, prefix string, last bool) {
+		t := byID[id]
+		branch := "├── "
+		if last {
+			branch = "└── "
+		}
+		if prefix == "" {
+			branch = ""
+		}
+		fmt.Printf("%s%s%-9s P%d  %-11s %-14s %s\n",
+			prefix, branch, t.ID, t.Priority, t.Type, t.Stage, t.Title)
+
+		childPrefix := prefix
+		if prefix != "" {
+			if last {
+				childPrefix += "    "
+			} else {
+				childPrefix += "│   "
+			}
+		}
+		kids := children[id]
+		for i, kid := range kids {
+			walk(kid, childPrefix, i == len(kids)-1)
+		}
+	}
+
+	for i, id := range roots {
+		if i > 0 && len(children[id]) > 0 {
+			fmt.Println()
+		}
+		walk(id, "", i == len(roots)-1)
+	}
 }
 
 func pipelineGroup(t *ticket.Ticket) (string, int) {

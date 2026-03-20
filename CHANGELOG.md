@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- `tk skip --to done --reason '...'` now works — skip bypasses gate checks (including the final transition to done), with the reason serving as the audit trail
+- `advance --force` error message now suggests using `tk skip` as an alternative
+
 ### Removed
 - **Status type completely removed** — the `Status` type, constants (`open`, `in_progress`, `needs_testing`, `closed`), `ValidateStatus()`, `DeriveStatus()`, `SortByStatusPriorityID()`, and the `--status` filter flag are all gone. Stage is now the sole state model.
 - Status field removed from Ticket struct, JSON output (CLI, MCP), and serialized YAML frontmatter

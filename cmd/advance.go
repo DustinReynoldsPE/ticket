@@ -11,7 +11,7 @@ import (
 var advanceCmd = &cobra.Command{
 	Use:   "advance <id> [--to <stage>]",
 	Short: "Move ticket to next pipeline stage",
-	Long:  "Advance a ticket through its type-dependent pipeline. Enforces gate checks unless --force is set. Blocked tickets (unfinished deps) cannot advance. --force cannot be used for the final transition to done.",
+	Long:  "Advance a ticket through its type-dependent pipeline. Enforces gate checks unless --force is set. Blocked tickets (unfinished deps) cannot advance. --force cannot be used for the final transition to done; use 'tk skip --to done --reason ...' instead.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runAdvance,
 }

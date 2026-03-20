@@ -35,7 +35,7 @@ Creating & Editing:
 
 Pipeline:
   advance <id> [--to <stage>] [--force]  Advance ticket (blocks on deps; --force cannot reach done)
-  skip <id> --to <stage> --reason '...'  Skip to a later stage with justification
+  skip <id> --to <stage> --reason '...'  Skip to a later stage (bypasses gates, can reach done)
   review <id> --approve|--reject         Record review verdict on current stage
   log <id>                               Show stage transition and review history
   pipeline [--stage <stage>]             Show tickets grouped by pipeline stage
@@ -68,6 +68,9 @@ Query (JSON):
     created, assignee, parent, notes, external_ref, review, risk
   Body sections (## Heading) become snake_case fields.
 
+Hierarchy:
+  tree [filters]             Show tickets as parent/child tree
+
 Analytics:
   stats                      Project health at a glance
   timeline [--weeks=N]       Tickets closed by week (default: 4 weeks)
@@ -88,6 +91,7 @@ Filter flags for ls:
   --parent=X         Children of ticket X
   --group-by=X       Group by: workflow | pipeline | type | priority
   --flat             Flat list (no grouping)
+  --tree             Show parent/child hierarchy as tree
 
 Filter flags for ready, blocked, closed:
   -a, --assignee=X   Filter by assignee

@@ -11,6 +11,7 @@ type AdvanceOptions struct {
 	SkipTo Stage  // If set, skip directly to this stage instead of next.
 	Reason string // Required when skipping stages.
 	Force  bool   // Bypass gate checks.
+	skip   bool   // Internal: set by Skip() to allow reaching done with reason.
 }
 
 // AdvanceResult describes what happened during a stage advance.
@@ -77,9 +78,10 @@ func Advance(store *FileStore, id string, opts AdvanceOptions) (*AdvanceResult, 
 	// Run gate checks.
 	result := &AdvanceResult{From: from, To: to, Skipped: skipped}
 
-	// Force cannot be used for the final transition to done.
-	if opts.Force && to == StageDone {
-		return nil, fmt.Errorf("cannot force-advance to done; the final stage transition must pass gate checks")
+	// Force cannot be used for the final transition to done, but skip can
+	// (the reason provides the audit trail).
+	if opts.Force && to == StageDone && !opts.skip {
+		return nil, fmt.Errorf("cannot force-advance to done; the final stage transition must pass gate checks (use 'tk skip' with a reason instead)")
 	}
 
 	if !opts.Force {
@@ -104,11 +106,15 @@ func Advance(store *FileStore, id string, opts AdvanceOptions) (*AdvanceResult, 
 	return result, nil
 }
 
-// Skip is a convenience wrapper around Advance with SkipTo set.
+// Skip advances a ticket to a later stage, bypassing intermediate stages and
+// gate checks. Unlike Force, Skip can reach done — the reason serves as the
+// audit trail in place of gate satisfaction.
 func Skip(store *FileStore, id string, to Stage, reason string) (*AdvanceResult, error) {
 	return Advance(store, id, AdvanceOptions{
 		SkipTo: to,
 		Reason: reason,
+		Force:  true,
+		skip:   true,
 	})
 }
 

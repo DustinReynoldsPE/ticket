@@ -68,13 +68,13 @@ tk show fix-auth --repo ~/code/other-project
 
 ## Agent Setup
 
-Add this line to your `CLAUDE.md` or `AGENTS.md`:
+Copy `CLAUDE_template.md` into your project as `CLAUDE.md` (or append its contents to an existing one). It covers pipeline stages, gate mechanics, and the correct way to complete tickets.
+
+For minimal setups, this single line works with Claude Opus:
 
 ```
 This project uses a CLI ticket system for task management. Run `tk help` when you need to use it.
 ```
-
-Claude Opus picks it up naturally from there. Other models may need additional guidance.
 
 ## Usage
 
