@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/DustinReynoldsPE/ticket/pkg/ticket"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -230,16 +232,22 @@ func printTree(tickets []*ticket.Ticket) {
 	var walk func(id string, prefix string, last bool, isRoot bool)
 	walk = func(id string, prefix string, last bool, isRoot bool) {
 		t := byID[id]
+		boldID := func(id string) string {
+			if isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd()) {
+				return "\033[1m" + id + "\033[0m"
+			}
+			return "**" + id + "**"
+		}
 		if isRoot {
-			fmt.Printf("\033[1m%-9s\033[0m P%d  %-11s %-14s %s\n",
-				t.ID, t.Priority, t.Type, t.Stage, t.Title)
+			fmt.Printf("%-9s P%d  %-11s %-14s %s\n",
+				boldID(t.ID), t.Priority, t.Type, t.Stage, t.Title)
 		} else {
 			branch := "├── "
 			if last {
 				branch = "└── "
 			}
-			fmt.Printf("%s%s\033[1m%s\033[0m P%d  %s  %s  %s\n",
-				prefix, branch, t.ID, t.Priority, t.Type, t.Stage, t.Title)
+			fmt.Printf("%s%s%s P%d  %s  %s  %s\n",
+				prefix, branch, boldID(t.ID), t.Priority, t.Type, t.Stage, t.Title)
 		}
 
 		var childPrefix string
