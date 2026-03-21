@@ -231,14 +231,14 @@ func printTree(tickets []*ticket.Ticket) {
 	walk = func(id string, prefix string, last bool, isRoot bool) {
 		t := byID[id]
 		if isRoot {
-			fmt.Printf("%-9s P%d  %-11s %-14s %s\n",
+			fmt.Printf("\033[1m%-9s\033[0m P%d  %-11s %-14s %s\n",
 				t.ID, t.Priority, t.Type, t.Stage, t.Title)
 		} else {
 			branch := "├── "
 			if last {
 				branch = "└── "
 			}
-			fmt.Printf("%s%s%s P%d  %s  %s  %s\n",
+			fmt.Printf("%s%s\033[1m%s\033[0m P%d  %s  %s  %s\n",
 				prefix, branch, t.ID, t.Priority, t.Type, t.Stage, t.Title)
 		}
 
